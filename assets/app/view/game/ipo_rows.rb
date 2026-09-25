@@ -56,7 +56,8 @@ module View
           },
         }
 
-        h('div.player.title.nowrap', props, ["IPO Row #{ipo_row_number}"])
+        title = @game.respond_to?(:ipo_row_title) ? @game.ipo_row_title(ipo_row_number) : "IPO Row #{ipo_row_number}"
+        h('div.player.title.nowrap', props, [title])
       end
 
       def render_first_ipo(ipo_row, ipo_row_number)

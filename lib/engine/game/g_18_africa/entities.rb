@@ -13,6 +13,7 @@ module Engine
             revenue: 5,
             desc: 'No special ability.',
             color: nil,
+            type: :private,
           },
           {
             name: 'Allen Rock Aggregates',
@@ -21,6 +22,7 @@ module Engine
             revenue: 5,
             desc: 'Once per game, the Company may lay five yellow tiles on its turn instead of four.',
             color: nil,
+            type: :private,
           },
           {
             name: 'Thompson Wagon Works',
@@ -29,6 +31,7 @@ module Engine
             revenue: 10,
             desc: 'Once per game, the Company may upgrade the same track tile twice in one turn instead of once.',
             color: nil,
+            type: :private,
           },
           {
             name: 'Jamieson Tropical Timber',
@@ -37,6 +40,7 @@ module Engine
             revenue: 12,
             desc: 'Once per game, the Company does not need to pay the cost for one track lay over a river.',
             color: nil,
+            type: :private,
           },
           {
             name: 'George Edmunds Colonial Factors',
@@ -46,6 +50,7 @@ module Engine
             desc: 'Once per game, the Company does not need to pay the cost for one token lay '\
                   '(it may lay a £100 token even if a £40 one is still available).',
             color: nil,
+            type: :private,
           },
           {
             name: 'Madianos Olive Groves',
@@ -55,6 +60,7 @@ module Engine
             desc: 'Once per game, at the start of a Stock Round, the owning player may take the Priority Deal. '\
                   'Can be owned by but cannot be used by a Company.',
             color: nil,
+            type: :private,
           },
         ].freeze
 
