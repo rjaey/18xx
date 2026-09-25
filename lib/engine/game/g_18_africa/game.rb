@@ -725,12 +725,13 @@ module Engine
         # ----- Game end [4]
 
         # A Share is worth its Market Value plus 10% of the Market Value of shares and of the face value
-        # of Privates the Company owns, plus 5% of the face value of its trains, rounded down
+        # of Privates the Company owns, plus 5% of the face value of its trains; each addition is
+        # rounded down separately (rule 4 example: 5% of 1030 -> 51, 10% of 237 -> 23)
         def final_share_value(corporation)
           owned_shares = corporation.corporate_shares.sum { |s| s.corporation.share_price.price * s.num_shares }
           owned_privates = corporation.companies.select { |c| c.type == :private }.sum(&:value)
           trains = corporation.trains.sum(&:price)
-          (corporation.share_price.price + ((owned_shares + owned_privates) / 10.0) + (trains / 20.0)).floor
+          corporation.share_price.price + ((owned_shares + owned_privates) / 10) + (trains / 20)
         end
 
         # Cash, £100 per Bond, face value of Privates and adjusted value of Shares; cards in hand are worth nothing

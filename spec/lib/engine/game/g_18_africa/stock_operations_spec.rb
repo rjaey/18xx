@@ -64,20 +64,22 @@ module Engine
         end
 
         describe 'final scoring' do
-          it 'adds 10% of owned shares and privates and 5% of trains to the share value' do
-            # Example from rule 4: market value 300, a private worth 25, shares worth 100 and 112,
-            # trains 3+3T (850) and 2 (180)
+          def owned_share(price)
+            double(corporation: double(share_price: double(price: price)), num_shares: 1)
+          end
+
+          it 'follows the example of rule 4 and rounds each addition down' do
+            # market value 300, a private worth 25, shares worth 100 and 112, trains 3+3T and 2
             set_price(mf, 300)
             private = game.companies.find { |c| c.id == 'P1' }
             private.owner = mf
             mf.companies << private
-            allow(mf).to receive(:corporate_shares).and_return([cnr.shares.last, cnr.shares[-2]])
-            set_price(cnr, 112) # both shares at 112 to keep the example simple: 224 instead of 212
+            allow(mf).to receive(:corporate_shares).and_return([owned_share(100), owned_share(112)])
             trains = game.depot.upcoming.select { |t| %w[3+3T 2].include?(t.name) }.uniq(&:name)
             allow(mf).to receive(:trains).and_return(trains)
 
-            # 300 + (224 + 25) / 10 + (850 + 180) / 20 = 300 + 24.9 + 51.5 = 376.4
-            expect(game.final_share_value(mf)).to eq(376)
+            # 5% of 1030 = 51.5 -> 51; 10% of 237 = 23.7 -> 23; 300 + 51 + 23
+            expect(game.final_share_value(mf)).to eq(374)
           end
         end
       end
