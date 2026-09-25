@@ -8,6 +8,8 @@ require_relative 'player'
 require_relative 'step/card_selection'
 require_relative 'step/initial_auction'
 require_relative 'step/buy_sell_certificates'
+require_relative 'step/dividend'
+require_relative 'step/buy_train'
 require_relative '../base'
 
 module Engine
@@ -29,8 +31,13 @@ module Engine
 
         STARTING_CASH = { 2 => 782, 3 => 694, 4 => 606, 5 => 518 }.freeze
 
-        # Certificate limits with 0 closed companies; reductions for closures follow in stage 3 [2.4]
-        CERT_LIMIT = { 2 => 28, 3 => 24, 4 => 18, 5 => 15 }.freeze
+        # Certificate limit by number of remaining companies: none, one or two+ closed [2.4]
+        CERT_LIMIT = {
+          2 => { 7 => 28, 6 => 23, 5 => 19 },
+          3 => { 9 => 24, 8 => 21, 7 => 18 },
+          4 => { 9 => 18, 8 => 16, 7 => 14 },
+          5 => { 9 => 15, 8 => 13, 7 => 11 },
+        }.freeze
 
         # Number of companies chosen at random for the game [1.3]
         CORPORATIONS_IN_GAME = { 2 => 7, 3 => 9, 4 => 9, 5 => 9 }.freeze
@@ -46,6 +53,21 @@ module Engine
 
         # Cards revealed from the Bank Deck in a single purchase [2.2]
         MAX_DECK_PURCHASES = 3
+
+        # Economy by number of Shares/Privates in the Bank Pool [3.4.7]
+        ECONOMY_NAMES = { boom: 'Boom', recovery: 'Recovery', recession: 'Recession', depression: 'Depression' }.freeze
+        ECONOMY_CITY_DELTA = { boom: 20, recovery: 0, recession: -10, depression: -20 }.freeze
+        ECONOMY_TOWN_DELTA = { boom: 0, recovery: 0, recession: -10, depression: -20 }.freeze
+        BOND_PAYOUT = { boom: 10, recovery: 15, recession: 30, depression: 40 }.freeze
+        # The first two Operating Rounds are played in Recovery [3.4.7]
+        FIXED_RECOVERY_ORS = 2
+
+        # Value of a Variable City when no Non-Variable City is on the route [3.4.4]
+        VARIABLE_CITY_DEFAULT = 20
+
+        # Trains ignoring Recessions and Depressions / allowed to start and end in towns [3.4.3]
+        ECONOMY_PROOF_TRAINS = %w[3+3T].freeze
+        TOWN_END_TRAINS = %w[3+3T 4+4+4T].freeze
 
         CAPITALIZATION = :incremental
         HOME_TOKEN_TIMING = :float
@@ -75,17 +97,21 @@ module Engine
              280 300 320 340 360 380 400e 420e 440e 460e],
         ].freeze
 
+        # All tiles are available from the start and the train limit is always 2 [7].
+        # After the last 4E is bought every train type becomes available [3.6.1].
         PHASES = [
           { name: '2', train_limit: 2, tiles: %i[yellow green brown gray], operating_rounds: 2 },
           { name: '3', on: '3', train_limit: 2, tiles: %i[yellow green brown gray], operating_rounds: 2 },
           { name: '4E', on: '4E', train_limit: 2, tiles: %i[yellow green brown gray], operating_rounds: 2 },
+          { name: 'All', train_limit: 2, tiles: %i[yellow green brown gray], operating_rounds: 2 },
         ].freeze
 
         # Towns never count against the distance; only Cities do [3.4.1].
-        # TODO: stage 3: 'T' trains may start/end in towns, 3+3T ignores recessions, 4E counts best four stops.
+        # 'E' trains visit any number of Cities and count the best four stops [3.4.3].
         TRAINS = [
           {
             name: '2',
+            salvage: 180,
             distance: [{ 'nodes' => %w[city offboard], 'pay' => 2, 'visit' => 2 },
                        { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
             price: 180,
@@ -93,6 +119,7 @@ module Engine
           },
           {
             name: '3',
+            salvage: 180,
             distance: [{ 'nodes' => %w[city offboard], 'pay' => 3, 'visit' => 3 },
                        { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
             price: 300,
@@ -100,52 +127,68 @@ module Engine
           },
           {
             name: '4E',
+            salvage: 300,
             distance: [{ 'nodes' => %w[city offboard town], 'pay' => 4, 'visit' => 99 }],
+            requires_token: false,
             price: 450,
             num: 3,
+            events: [{ 'type' => 'all_trains_available', 'when' => 3 }],
           },
-          # TODO: stage 3: available only after the last 4E is bought [3.6.1]
           {
             name: '3+3',
+            salvage: 500,
             distance: [{ 'nodes' => %w[city offboard], 'pay' => 3, 'visit' => 3 },
                        { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
             multiplier: 2,
             price: 700,
             num: 3,
-            available_on: '4E',
+            available_on: 'All',
           },
           {
             name: '3+3T',
+            salvage: 650,
             distance: [{ 'nodes' => %w[city offboard], 'pay' => 3, 'visit' => 3 },
                        { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
             multiplier: 2,
             price: 850,
             num: 3,
-            available_on: '4E',
+            available_on: 'All',
           },
           {
             name: '4+4+4E',
+            salvage: 750,
             distance: [{ 'nodes' => %w[city offboard town], 'pay' => 4, 'visit' => 99 }],
+            requires_token: false,
             multiplier: 3,
             price: 1000,
             num: 3,
-            available_on: '4E',
+            available_on: 'All',
           },
           {
             name: '4+4+4T',
+            salvage: 850,
             distance: [{ 'nodes' => %w[city offboard], 'pay' => 4, 'visit' => 4 },
                        { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
             multiplier: 3,
             price: 1200,
             num: 3,
-            available_on: '4E',
+            available_on: 'All',
           },
         ].freeze
 
-        # Amount received when selling a train back to the Bank [3.6.3]
-        TRAIN_RESALE_PRICES = {
-          '2' => 180, '3' => 180, '4E' => 300, '3+3' => 500, '3+3T' => 650, '4+4+4E' => 750, '4+4+4T' => 850
-        }.freeze
+        # Selling a train returns it to the Bank for the amount in parentheses [3.6.3]
+        def sell_train_to_bank(operator, train)
+          price = train.salvage
+          @bank.spend(price, operator)
+          @depot.reclaim_train(train)
+          @log << "#{operator.name} sells a #{train.name} train to the Bank for #{format_currency(price)}"
+        end
+
+        def event_all_trains_available!
+          @log << '-- The last 4E has been bought: all trains are now available --'
+          @phase.next!
+          @depot.depot_trains(clear: true)
+        end
 
         def num_trains(train)
           # With two players, remove one '2' and one '3' train [1.2]
@@ -445,6 +488,151 @@ module Engine
           @players.rotate(index + 1).find { |p| candidates.include?(p) }
         end
 
+        # ----- Economy [3.4.7]
+
+        def bank_pool_certificates
+          @share_pool.shares.size + @bank.companies.count { |c| c.type == :private }
+        end
+
+        def economy
+          return :recovery if operating_round_number <= FIXED_RECOVERY_ORS
+
+          case bank_pool_certificates
+          when 0 then :boom
+          when 1..2 then :recovery
+          when 3..6 then :recession
+          else :depression
+          end
+        end
+
+        def economy_name
+          ECONOMY_NAMES[economy]
+        end
+
+        def operating_round_number
+          @operating_round_number || 0
+        end
+
+        def new_operating_round(round_num = 1)
+          @operating_round_number = operating_round_number + 1
+          super
+        end
+
+        # Privates pay their income, Bonds pay depending on the Economy; in a Depression
+        # every Share Price marker moves back one space [3]
+        def payout_companies(ignore: [])
+          super
+          payout_bonds
+          depression_price_drop if economy == :depression
+        end
+
+        def payout_bonds
+          amount = BOND_PAYOUT[economy]
+          (@players + @corporations).each do |owner|
+            bonds = owner.companies.count { |c| c.type == :bond }
+            next if bonds.zero?
+
+            @bank.spend(amount * bonds, owner)
+            @log << "#{owner.name} collects #{format_currency(amount * bonds)} from #{bonds} Bond(s) "\
+                    "(#{economy_name})"
+          end
+        end
+
+        def depression_price_drop
+          @log << 'Depression: every Share Price marker moves back one space'
+          @corporations.select(&:floated?).each do |corporation|
+            old_price = corporation.share_price
+            @stock_market.move_left(corporation)
+            log_share_price(corporation, old_price)
+          end
+          close_corporations_in_close_cell!
+        end
+
+        # ----- Revenue [3.4]
+
+        def variable_city?(stop)
+          stop.city? && VARIABLE_CITY_MODIFIERS.key?(stop.hex.id)
+        end
+
+        def stop_value(stop, route, current_economy)
+          delta = stop.city? ? ECONOMY_CITY_DELTA[current_economy] : ECONOMY_TOWN_DELTA[current_economy]
+          delta = 0 if delta.negative? && ECONOMY_PROOF_TRAINS.include?(route.train.name)
+          [stop.route_revenue(route.phase, route.train) + delta, 0].max
+        end
+
+        # A Variable City is worth the best Non-Variable City on the route, counted or not, plus its modifier
+        def variable_city_value(stop, route, current_economy)
+          best = route.visited_stops
+                      .select { |s| s.city? && !variable_city?(s) }
+                      .map { |s| stop_value(s, route, current_economy) }
+                      .max
+          best ? best + VARIABLE_CITY_MODIFIERS[stop.hex.id] : VARIABLE_CITY_DEFAULT
+        end
+
+        def revenue_for(route, stops)
+          current_economy = economy
+          value = stops.sum do |stop|
+            variable_city?(stop) ? variable_city_value(stop, route, current_economy) : stop_value(stop, route, current_economy)
+          end
+          (value * (route.train.multiplier || 1)) + route_bonus(route)
+        end
+
+        # Bonuses are neither multiplied by trains nor affected by the Economy [3.4.5, 3.4.6]
+        def route_bonus(route)
+          transcontinental_bonus(route)
+        end
+
+        def transcontinental_bonus(route)
+          hexes = route.all_hexes.map(&:id)
+          TRANSCONTINENTAL_BONUSES.sum { |b| (b[:hexes] - hexes).empty? ? b[:bonus] : 0 }
+        end
+
+        def revenue_str(route)
+          str = route.hexes.map(&:name).join('-')
+          bonus = route_bonus(route)
+          str += " + #{format_currency(bonus)}" if bonus.positive?
+          str
+        end
+
+        # At least two Cities; only 'T' trains may start or end in a Town [3.4.1]
+        def check_other(route)
+          visited = route.visited_stops
+          raise GameError, 'Route must include at least two Cities' if visited.count(&:city?) < 2
+          return if TOWN_END_TRAINS.include?(route.train.name)
+          return if visited.first.city? && visited.last.city?
+
+          raise GameError, 'Route must start and end in a City'
+        end
+
+        # ----- End of a company's turn
+
+        # A Managed Company without a train that does not buy one falls back two more spaces [2.3, 3.5.1]
+        def after_end_of_operating_turn(operator)
+          super
+          return if !operator.corporation? || operator.closed?
+          return if !operator.managed? || !operator.trains.empty?
+
+          old_price = operator.share_price
+          2.times { @stock_market.move_left(operator) }
+          @log << "#{operator.name} is Managed and has no train"
+          log_share_price(operator, old_price)
+          close_corporations_in_close_cell!
+        end
+
+        # Shares and Privates owned by a closing Company go to the Bank Pool; its cards leave the game [3.5.1]
+        def close_corporation(corporation, quiet: false)
+          corporation.companies.dup.each do |company|
+            corporation.companies.delete(company)
+            company.owner = @bank
+            @bank.companies << company
+          end
+          corporation.corporate_shares.dup.each do |share|
+            @share_pool.transfer_shares(share.to_bundle, @share_pool, allow_president_change: false)
+          end
+          @companies.select { |c| share_card?(c) && c.id.start_with?("#{corporation.id}_") }.each { |c| remove_card(c) }
+          super
+        end
+
         # ----- View helpers
 
         def show_hidden_hand?
@@ -538,8 +726,8 @@ module Engine
             Engine::Step::Track,
             Engine::Step::Token,
             Engine::Step::Route,
-            Engine::Step::Dividend,
-            Engine::Step::BuyTrain,
+            G18Africa::Step::Dividend,
+            G18Africa::Step::BuyTrain,
           ], round_num: round_num)
         end
       end

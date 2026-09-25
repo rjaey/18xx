@@ -7,7 +7,7 @@ module Engine
         # Special abilities are added in a later stage; values and income are from rules [5].
         COMPANIES = [
           {
-            name: 'Cape Town Co.',
+            name: 'Cape Wine Co.',
             sym: 'P1',
             value: 25,
             revenue: 5,

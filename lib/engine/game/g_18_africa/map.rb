@@ -126,6 +126,7 @@ module Engine
           'L9' => 'Kufra',
           'L31' => 'Mafeking',
           'M18' => 'Wau & Juba',
+          'M24' => 'Zambesi Head',
           'M26' => 'Lusaka',
           'M28' => 'Bulawayo',
           'M32' => 'Pretoria & Johannesburg',
