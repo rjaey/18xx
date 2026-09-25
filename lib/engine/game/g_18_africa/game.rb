@@ -10,6 +10,7 @@ require_relative 'step/initial_auction'
 require_relative 'step/buy_sell_certificates'
 require_relative 'step/dividend'
 require_relative 'step/buy_train'
+require_relative 'step/track'
 require_relative '../base'
 
 module Engine
@@ -72,7 +73,8 @@ module Engine
         CAPITALIZATION = :incremental
         HOME_TOKEN_TIMING = :float
         MUST_BUY_TRAIN = :never
-        TRACK_RESTRICTION = :permissive
+        # New track must be reachable, upgrades must use new track or change a City/Town [3.2]
+        TRACK_RESTRICTION = :semi_restrictive
 
         # Nothing done in the Stock Round affects the Market Value [7]
         SELL_BUY_ORDER = :sell_buy
@@ -206,6 +208,8 @@ module Engine
 
         def setup
           remove_home_reservations(@removals)
+          # Tangier and Casablanca start connected to each other, no bonus for them [3.2.4]
+          @connected_cities = connected_city_keys
         end
 
         # Shuffle the 17 charters and keep 9 of them (7 with two players) [1.3]
@@ -604,6 +608,85 @@ module Engine
           raise GameError, 'Route must start and end in a City'
         end
 
+        # ----- Track [3.2]
+
+        # Yellow tiles with a single Town may be upgraded into a green City tile [3.2.3]
+        def yellow_town_to_city_upgrade?(from, to)
+          from.color == :yellow && from.towns.one? && from.cities.empty? &&
+            to.color == :green && to.cities.one? && to.towns.empty?
+        end
+
+        def upgrades_to?(from, to, special = false, selected_company: nil)
+          return true if yellow_town_to_city_upgrade?(from, to)
+
+          super
+        end
+
+        # ----- Connection Bonus [3.2.4]
+
+        # Cities connected by track to at least one other City, ignoring train length and tokens
+        def connected_city_keys
+          parent = {}
+          find = lambda do |k|
+            parent[k] ||= k
+            root = k
+            root = parent[root] until parent[root] == root
+            parent[k] = root
+          end
+          union = ->(a, b) { parent[find.call(a)] = find.call(b) }
+
+          cities = []
+          @hexes.each do |hex|
+            hex.tile.cities.each { |city| cities << city }
+            hex.tile.paths.each do |path|
+              keys = path.exits.map { |edge| edge_key(hex, edge) }
+              keys.concat(path.nodes.map { |node| node_key(node) })
+              keys << [hex.id, :junction] if path.junction
+              keys.each_cons(2) { |a, b| union.call(a, b) }
+            end
+          end
+
+          by_component = cities.group_by { |city| find.call(node_key(city)) }
+          by_component.values.select { |group| group.size > 1 }.flatten.map { |city| node_key(city) }
+        end
+
+        def edge_key(hex, edge)
+          neighbor = hex.neighbors[edge]
+          return [hex.id, edge] unless neighbor
+
+          [[hex.id, edge], [neighbor.id, hex.invert(edge)]].min
+        end
+
+        def node_key(node)
+          [node.hex.id, node.type, node.index]
+        end
+
+        def city_for_key(key)
+          hex_by_id(key[0]).tile.cities.find { |city| city.index == key[2] }
+        end
+
+        def check_connection_bonus(entity, hex, town_upgrade: false)
+          now = connected_city_keys
+          newly = now - @connected_cities
+          @connected_cities |= now
+          return if newly.empty?
+
+          reachable = graph_for_entity(entity).connected_nodes(entity).keys.select(&:city?).map { |c| node_key(c) }
+          newly.each do |key|
+            city = city_for_key(key)
+            name = city.hex.location_name || city.hex.id
+            if town_upgrade && key[0] == hex.id
+              @log << "#{name} was upgraded from a Town and gives no Connection Bonus"
+            elsif !reachable.include?(key)
+              @log << "#{name} is connected but #{entity.name} cannot reach it: its Connection Bonus is lost"
+            else
+              amount = variable_city?(city) ? VARIABLE_CITY_DEFAULT : city.max_revenue
+              @bank.spend(amount, entity) if amount.positive?
+              @log << "#{entity.name} receives a Connection Bonus of #{format_currency(amount)} for #{name}"
+            end
+          end
+        end
+
         # ----- End of a company's turn
 
         # A Managed Company without a train that does not buy one falls back two more spaces [2.3, 3.5.1]
@@ -723,7 +806,7 @@ module Engine
         def operating_round(round_num)
           Engine::Round::Operating.new(self, [
             Engine::Step::HomeToken,
-            Engine::Step::Track,
+            G18Africa::Step::Track,
             Engine::Step::Token,
             Engine::Step::Route,
             G18Africa::Step::Dividend,

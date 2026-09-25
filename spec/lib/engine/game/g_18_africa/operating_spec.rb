@@ -1,69 +1,28 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative 'spec_helpers'
 
 module Engine
   module Game
     module G18Africa
       describe Game do
+        include G18AfricaSpecHelpers
+
         let(:players) { %w[a b c] }
         # first seed where Marrakech-Fez (home D5, next to Casablanca D3) is in the game
-        let(:seed) { (1..200).find { |i| Engine::Game::G18Africa::Game.new(players, id: i).corporation_by_id('MF') } }
-        let(:game) { Engine::Game::G18Africa::Game.new(players, id: seed) }
+        let(:game) { Engine::Game::G18Africa::Game.new(players, id: seed_with('MF')) }
         let(:mf) { game.corporation_by_id('MF') }
-
-        def step
-          game.round.active_step
-        end
-
-        def current
-          step.current_entity
-        end
-
-        def process(type, entity, **args)
-          action = {
-            'type' => type,
-            'entity' => entity.id,
-            'entity_type' => entity.player? ? 'player' : 'corporation',
-          }
-          args.each { |k, v| action[k.to_s] = v }
-          game.process_action(action)
-          raise game.exception if game.exception
-        end
-
-        def reach_first_stock_round
-          game.players.size.times do
-            process('select_multiple_companies', current, companies: current.hand.first(step.cards_to_keep).map(&:id))
-          end
-          while game.round.is_a?(Engine::Round::Auction)
-            if step.auctioning
-              process('pass', current)
-            else
-              process('bid', current, company: game.auction_cards.first.id, price: 0)
-            end
-          end
-        end
 
         # MF is started with its Director's Certificate and given enough money for trains
         def start_mf
           reach_first_stock_round
-          card = game.companies.find { |c| c.id == 'MF_0' }
-          player = current
-          game.remove_card(card)
-          player.hand << card
-          process('buy_company', player, company: card.id, price: card.value)
-          game.bank.spend(1000, mf)
-          process('pass', current) while game.round.is_a?(Engine::Round::Stock)
+          start_with_director(mf)
+          finish_first_stock_round
         end
 
         def lay_marrakech_towards_casablanca
-          hex = game.hex_by_id('D5')
-          tile = game.tiles.find { |t| t.name == '115' }
-          rotation = (0..5).find do |r|
-            tile.rotate!(r)
-            tile.exits.include?(3) && step.legal_tile_rotation?(mf, hex, tile)
-          end
-          process('lay_tile', mf, hex: 'D5', tile: tile.id, rotation: rotation)
+          lay(mf, 'D5', '115', [3])
         end
 
         def pass_until(step_class)
