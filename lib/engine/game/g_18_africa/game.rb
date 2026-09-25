@@ -11,6 +11,7 @@ require_relative 'step/buy_sell_certificates'
 require_relative 'step/dividend'
 require_relative 'step/buy_train'
 require_relative 'step/track'
+require_relative 'step/corporate_stock'
 require_relative '../base'
 
 module Engine
@@ -428,7 +429,8 @@ module Engine
         # ----- Director and Manager [2.3]
 
         def update_control(corporation, buyer: nil)
-          counts = @players.to_h { |p| [p, corporation.num_shares_held_by(p)] }
+          holders = @players + @corporations.reject { |c| c == corporation }
+          counts = holders.to_h { |h| [h, corporation.num_shares_held_by(h)] }
           @control_checks = (@control_checks || 0) + 1
           corporation.track_holdings(counts, @control_checks)
           return unless corporation.floated?
@@ -461,7 +463,7 @@ module Engine
         end
 
         def update_manager(corporation, counts)
-          manager = corporation.owner if corporation.owner&.player?
+          manager = corporation.owner if corporation.owner && corporation.owner != corporation
           max = counts.values.max
           return set_controller(corporation, manager, 'Manager') if manager && counts[manager] >= max
 
@@ -487,9 +489,13 @@ module Engine
           @log << "#{player.name} becomes the #{title} of #{corporation.name}"
         end
 
-        def first_clockwise_from(player, candidates)
+        # Ties: players clockwise from the previous controller (or the player behind a
+        # controlling Company), then Companies in decreasing Market Value [2.1, 3.7]
+        def first_clockwise_from(previous, candidates)
+          player = previous&.player? ? previous : previous&.player
           index = @players.index(player) || 0
-          @players.rotate(index + 1).find { |p| candidates.include?(p) }
+          companies = @corporations.select(&:floated?).sort_by { |c| -c.share_price.price }
+          (@players.rotate(index + 1) + companies).find { |h| candidates.include?(h) }
         end
 
         # ----- Economy [3.4.7]
@@ -716,6 +722,27 @@ module Engine
           super
         end
 
+        # ----- Game end [4]
+
+        # A Share is worth its Market Value plus 10% of the Market Value of shares and of the face value
+        # of Privates the Company owns, plus 5% of the face value of its trains, rounded down
+        def final_share_value(corporation)
+          owned_shares = corporation.corporate_shares.sum { |s| s.corporation.share_price.price * s.num_shares }
+          owned_privates = corporation.companies.select { |c| c.type == :private }.sum(&:value)
+          trains = corporation.trains.sum(&:price)
+          (corporation.share_price.price + ((owned_shares + owned_privates) / 10.0) + (trains / 20.0)).floor
+        end
+
+        # Cash, £100 per Bond, face value of Privates and adjusted value of Shares; cards in hand are worth nothing
+        def player_value(player)
+          player.cash + player.companies.sum(&:value) +
+            player.shares.sum { |s| s.num_shares * share_value_for_score(s.corporation) }
+        end
+
+        def share_value_for_score(corporation)
+          corporation.floated? ? final_share_value(corporation) : CORPORATION_PRICES[corporation.id]
+        end
+
         # ----- View helpers
 
         def show_hidden_hand?
@@ -811,6 +838,8 @@ module Engine
             Engine::Step::Route,
             G18Africa::Step::Dividend,
             G18Africa::Step::BuyTrain,
+            G18Africa::Step::CorporateSellShares,
+            G18Africa::Step::CorporateBuyShares,
           ], round_num: round_num)
         end
       end
