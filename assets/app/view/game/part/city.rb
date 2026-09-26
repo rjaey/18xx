@@ -347,6 +347,8 @@ module View
         end
 
         def render_revenue
+          return if @city.hide
+
           revenues = @city.uniq_revenues
           return if revenues.size > 1
 

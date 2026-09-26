@@ -90,6 +90,10 @@ module Engine
             player.cash
           end
 
+          def pass_description
+            'Pass'
+          end
+
           def committed_cash(_player, _show_hidden = false)
             0
           end

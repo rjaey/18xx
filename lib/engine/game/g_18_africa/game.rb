@@ -1004,6 +1004,38 @@ module Engine
 
         # ----- View helpers
 
+        ROUND_TITLES = {
+          'Draft' => 'Certificate Selection',
+          'Auction' => 'Initial Auction',
+          'ConcessionAuction' => 'Concession Auction',
+          'PriorityDeal' => 'Priority Deal',
+        }.freeze
+
+        def round_description(name, round_number = nil)
+          super(ROUND_TITLES.fetch(name, name), round_number)
+        end
+
+        COMPANY_HEADERS = {
+          share: 'SHARE',
+          director: "DIRECTOR'S CERTIFICATE",
+          bond: 'GOVERNMENT BOND',
+          concession: 'CONCESSION',
+          concession_right: 'CONCESSION',
+        }.freeze
+
+        def company_header(company)
+          COMPANY_HEADERS.fetch(company.type, 'PRIVATE COMPANY')
+        end
+
+        # A Company starts with its Director's Certificate or three ordinary shares [2.3]
+        def float_str(entity)
+          return unless entity.corporation?
+          return if entity.floated?
+
+          shares = 3 - entity.ordinary_shares_bought
+          "Director or #{shares} share#{shares > 1 ? 's' : ''}"
+        end
+
         def show_hidden_hand?
           true
         end
