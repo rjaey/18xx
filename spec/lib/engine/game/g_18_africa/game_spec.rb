@@ -50,6 +50,15 @@ module Engine
             expect(two.depot.trains.count { |t| t.name == '3' }).to eq(3)
           end
 
+          it 'names the home City and its coordinates on every certificate' do
+            game.corporations.each do |corporation|
+              cards = game.companies.select { |c| c.id.start_with?("#{corporation.id}_") }
+              expect(cards.map(&:desc)).to all(end_with("(#{corporation.coordinates})"))
+            end
+            nr = game.companies.find { |c| c.id == 'NR_1' }
+            expect(nr.desc).to eq('10% of NR. Home: Lagos (G16)') if nr
+          end
+
           it 'prices share cards at the printed cost, the Director at twice' do
             corporation = game.corporations.first
             price = G18Africa::Entities::CORPORATION_PRICES[corporation.id]

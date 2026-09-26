@@ -313,6 +313,16 @@ module Engine
         end
 
         # Every share certificate is represented by a card with the same id as the share
+        # Companies sharing a pre-printed double City start in their own City of the hex [6]
+        HOME_CITY_NAMES = {
+          'COR' => 'Brazzaville', 'CNR' => 'Kinshasa', 'CSAR' => 'Pretoria', 'NZA' => 'Johannesburg'
+        }.freeze
+
+        def home_description(corporation)
+          name = HOME_CITY_NAMES[corporation.id] || LOCATION_NAMES[corporation.coordinates]
+          "Home: #{name} (#{corporation.coordinates})"
+        end
+
         def create_share_cards
           @corporations.flat_map do |corporation|
             corporation.ipo_shares.map do |share|
@@ -321,7 +331,8 @@ module Engine
                 sym: share.id,
                 name: director ? "#{corporation.id} Director" : "#{corporation.id} Share",
                 value: CORPORATION_PRICES[corporation.id] * share.percent / 10,
-                desc: "#{share.percent}% of #{corporation.name}#{director ? " (Director's Certificate)" : ''}",
+                desc: "#{share.percent}% of #{corporation.name}#{director ? " (Director's Certificate)" : ''}. "\
+                      "#{home_description(corporation)}",
                 type: director ? :director : :share,
                 color: corporation.color,
                 text_color: corporation.text_color,
