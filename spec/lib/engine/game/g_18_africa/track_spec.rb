@@ -84,6 +84,57 @@ module Engine
           end
         end
 
+        context 'with both Companies of Pretoria & Johannesburg (M32)' do
+          let(:game) { Engine::Game::G18Africa::Game.new(players, id: seed_with('CSAR', 'NZA')) }
+          let(:csar) { game.corporation_by_id('CSAR') }
+          let(:nza) { game.corporation_by_id('NZA') }
+          let(:m32) { game.hex_by_id('M32') }
+
+          before { reach_first_stock_round }
+
+          it 'reserves the hex, not a particular City' do
+            start_with_director(csar)
+            other = (game.corporations - [csar, nza]).first
+            city = m32.tile.cities.find { |c| c.tokens.compact.empty? }
+
+            expect(m32.tile.cities.flat_map(&:reservations).compact).to be_empty
+            expect(m32.tile.reservations).to eq([nza])
+            game.bank.spend(500, other)
+            expect(city.tokenable?(other, tokens: other.find_token_by_type)).to be(false)
+          end
+
+          it 'lets the Company that lays #10 choose its City first' do
+            start_with_director(csar)
+            start_with_director(nza)
+            finish_first_stock_round
+            process('pass', current) until current == csar
+
+            lay(csar, 'M32', '10', [])
+            expect(step).to be_a(Engine::Step::HomeToken)
+            expect(game.round.pending_tokens.map { |p| p[:entity] }).to eq([csar, nza])
+
+            cities = m32.tile.cities
+            process('place_token', csar, city: cities[1].id, slot: 0, tokener: csar.id)
+            process('place_token', nza, city: cities[0].id, slot: 0, tokener: nza.id)
+            expect(cities[1].tokened_by?(csar)).to be(true)
+            expect(cities[0].tokened_by?(nza)).to be(true)
+          end
+
+          it 'lets a Company choose its City when track was laid before it started' do
+            tile = game.tiles.find { |t| t.name == '10' }
+            m32.lay(tile)
+            start_with_director(csar)
+            expect(step).to be_a(Engine::Step::HomeToken)
+
+            city = m32.tile.cities[1]
+            process('place_token', csar, city: city.id, slot: 0, tokener: csar.id)
+            expect(city.tokened_by?(csar)).to be(true)
+
+            start_with_director(nza)
+            expect(m32.tile.cities[0].tokened_by?(nza)).to be(true)
+          end
+        end
+
         describe 'Town to City upgrades' do
           let(:game) { Engine::Game::G18Africa::Game.new(players, id: 1) }
 

@@ -238,10 +238,9 @@ module Engine
             return false unless bundle
             return false unless selling_turn?(entity)
             return false if entity != bundle.owner
-            # TODO: stage 2: exchange of the Director's Certificate on sale
-            return false if bundle.presidents_share
+            return true unless bundle.presidents_share
 
-            true
+            !@game.director_exchange_target(entity, bundle.corporation, bundle.percent / bundle.corporation.share_percent).nil?
           end
 
           def must_sell?(entity)

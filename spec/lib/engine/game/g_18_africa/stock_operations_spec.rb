@@ -63,6 +63,48 @@ module Engine
           end
         end
 
+        describe "selling the Director's Certificate" do
+          let(:director_share) { mf.presidents_share }
+          let(:ordinary) { mf.ipo_shares.reject(&:president) }
+
+          before do
+            reach_first_stock_round
+            process('pass', current) while game.stock_round_number == 1
+          end
+
+          def director_bundle(player)
+            game.bundles_for_corporation(player, mf).find { |b| b.presidents_share && b.percent == 20 }
+          end
+
+          it 'is exchanged with a holder of at least two shares who then holds the most' do
+            seller = current
+            buyer = game.players.find { |p| p != seller }
+            game.buy_share_from_card(seller, director_share, 152)
+            game.buy_share_from_card(seller, ordinary[0], 76)
+            ordinary[1..3].each { |share| game.buy_share_from_card(buyer, share, 76) }
+            expect(mf.owner).to eq(seller) # 3 : 3, the Director is not surpassed
+
+            bundle = director_bundle(seller)
+            expect(step.can_sell?(seller, bundle)).to be(true)
+            process('sell_shares', seller, shares: bundle.shares.map(&:id), percent: 20)
+
+            expect(mf.presidents_share.owner).to eq(buyer)
+            expect(mf.owner).to eq(buyer)
+            expect(mf.num_shares_held_by(buyer)).to eq(3)
+            expect(mf.num_shares_held_by(seller)).to eq(1)
+            expect(game.share_pool.shares_of(mf).size).to eq(2)
+          end
+
+          it 'cannot be sold if nobody could take it over' do
+            seller = current
+            buyer = game.players.find { |p| p != seller }
+            game.buy_share_from_card(seller, director_share, 152)
+            game.buy_share_from_card(buyer, ordinary[0], 76)
+
+            expect(step.can_sell?(seller, director_bundle(seller))).to be(false)
+          end
+        end
+
         describe 'final scoring' do
           def owned_share(price)
             double(corporation: double(share_price: double(price: price)), num_shares: 1)

@@ -73,6 +73,8 @@ module Engine
 
         CAPITALIZATION = :incremental
         HOME_TOKEN_TIMING = :float
+        # Tokens displaced by laying #10 on a double City are placed by their owners [3.3.1]
+        TOKEN_PLACEMENT_ON_TILE_LAY_ENTITY = :owner
         MUST_BUY_TRAIN = :never
         # New track must be reachable, upgrades must use new track or change a City/Town [3.2]
         TRACK_RESTRICTION = :semi_restrictive
@@ -209,8 +211,48 @@ module Engine
 
         def setup
           remove_home_reservations(@removals)
+          reserve_double_city_hexes
           # Tangier and Casablanca start connected to each other, no bonus for them [3.2.4]
           @connected_cities = connected_city_keys
+        end
+
+        # ----- Pre-printed yellow double Cities J21 and M32 [3.3.1]
+
+        DOUBLE_CITY_HEXES = %w[J21 M32].freeze
+
+        # Neither City is tied to a Company: the hex is reserved, so no other Company may
+        # token there unless room is left for the Companies starting there
+        def reserve_double_city_hexes
+          DOUBLE_CITY_HEXES.each do |id|
+            tile = hex_by_id(id).tile
+            tile.cities.each do |city|
+              city.reservations.compact.each { |corporation| tile.reservations << corporation }
+              city.remove_all_reservations!
+            end
+          end
+        end
+
+        def place_home_token(corporation)
+          return super unless DOUBLE_CITY_HEXES.include?(corporation.coordinates)
+          return if corporation.tokens.first&.used
+
+          hex = hex_by_id(corporation.coordinates)
+          tile = hex.tile
+          free = tile.cities.select { |city| city.tokens.compact.empty? }
+          token = corporation.find_token_by_type
+          tile.reservations.delete(corporation)
+
+          # With track already laid and both Cities free, the Company chooses its City
+          if !tile.paths.empty? && free.size > 1
+            @log << "#{corporation.name} must choose a City in #{hex.location_name} for its home token"
+            @round.pending_tokens << { entity: corporation, hexes: [hex], token: token }
+            @round.clear_cache!
+            return
+          end
+
+          city = free.find { |c| c.index == corporation.city } || free.first
+          @log << "#{corporation.name} places a token on #{hex.name}"
+          city.place_token(corporation, token)
         end
 
         # Shuffle the 17 charters and keep 9 of them (7 with two players) [1.3]
@@ -398,16 +440,43 @@ module Engine
           update_control(corporation)
         end
 
+        # The Director's Certificate is never sold directly: another holder with at least two shares, who holds
+        # the most shares after the sale, exchanges two of them for it [2.1]
+        def director_exchange_target(seller, corporation, sold_shares)
+          remaining = corporation.num_shares_held_by(seller) - sold_shares
+          holders = (@players + @corporations).reject { |h| [seller, corporation].include?(h) }
+          counts = holders.to_h { |h| [h, corporation.num_shares_held_by(h)] }
+          max = counts.values.max || 0
+          return if max < 2 || max < remaining
+
+          first_clockwise_from(seller, counts.select { |_, count| count == max }.keys)
+        end
+
         # Selling never moves the Share Price [7]; unstarted Companies sell at the printed price [2.1]
         def sell_shares_and_change_price(bundle, **_kwargs)
           corporation = bundle.corporation
           seller = bundle.owner
           price = bundle.price
+          bundle = exchange_director_before_sale(bundle) if bundle.presidents_share
           @share_pool.transfer_shares(bundle, @share_pool, spender: @bank, receiver: seller, price: price,
                                                            allow_president_change: false)
           @log << "#{seller.name} sells #{bundle.shares.size} share(s) of #{corporation.name} to the Bank Pool "\
                   "for #{format_currency(price)}"
           update_control(corporation)
+        end
+
+        def exchange_director_before_sale(bundle)
+          corporation = bundle.corporation
+          seller = bundle.owner
+          num_shares = bundle.percent / corporation.share_percent
+          target = director_exchange_target(seller, corporation, num_shares)
+          raise GameError, "Nobody can take over the Director's Certificate of #{corporation.name}" unless target
+
+          @share_pool.change_president(corporation.presidents_share, seller, target)
+          @log << "#{target.name} exchanges two shares with #{seller.name} for the Director's Certificate "\
+                  "of #{corporation.name}"
+          set_controller(corporation, target, 'Director')
+          ShareBundle.new(seller.shares_of(corporation).reject(&:president).take(num_shares))
         end
 
         def stock_round_number
@@ -804,6 +873,7 @@ module Engine
 
         def stock_round
           Engine::Round::Stock.new(self, [
+            Engine::Step::HomeToken,
             G18Africa::Step::BuySellCertificates,
           ])
         end

@@ -80,6 +80,21 @@ module Engine
             pass! if @round.track_halted || !can_lay_tile?(entity)
           end
 
+          # When #10 is first laid on a double City and both Companies have started there, the Company
+          # that laid it chooses first; otherwise they choose in order of Market Value [3.3.1]
+          def update_token!(action, entity, tile, old_tile)
+            super
+            pending = @round.pending_tokens.select { |p| p[:hexes] == [action.hex] }
+            return if pending.size < 2
+
+            layer = entity.company? ? entity.owner : entity
+            ordered = pending.each_with_index.sort_by do |p, index|
+              [p[:entity] == layer ? 0 : 1, -p[:entity].share_price.price, index]
+            end.map(&:first)
+            @round.pending_tokens.reject! { |p| pending.include?(p) }
+            @round.pending_tokens.concat(ordered)
+          end
+
           private
 
           def home_tile_lay?(entity, hex, tile)

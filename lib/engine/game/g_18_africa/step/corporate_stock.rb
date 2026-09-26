@@ -25,9 +25,12 @@ module Engine
             'Sell Shares and Privates'
           end
 
-          # TODO: stage 4: exchange of a Director's Certificate held by a Company
+          # A Director's Certificate can only be sold if another holder takes it over [2.1, 3.7]
           def can_sell?(entity, bundle)
-            super && !bundle.presidents_share
+            return false unless super
+            return true unless bundle.presidents_share
+
+            !@game.director_exchange_target(entity, bundle.corporation, bundle.percent / bundle.corporation.share_percent).nil?
           end
 
           def sellable_companies(entity)
