@@ -44,6 +44,26 @@ module G18AfricaSpecHelpers
     game.bank.spend(funds, corporation) if funds.positive?
   end
 
+  # Opener bids 0, everybody else passes, each winner takes the first Concession offered
+  def play_concession_auction
+    while game.round.is_a?(Engine::Game::G18Africa::Round::ConcessionAuction)
+      if step.actions(current).include?('choose')
+        process('choose', current, choice: step.choices.keys.first)
+      elsif step.auctioning
+        process('pass', current)
+      else
+        process('bid', current, company: game.concession_right.id, price: 0)
+      end
+    end
+  end
+
+  # Passes the current step, playing through the Concession Auction when it comes up
+  def advance
+    return play_concession_auction if game.round.is_a?(Engine::Game::G18Africa::Round::ConcessionAuction)
+
+    process('pass', current)
+  end
+
   def finish_first_stock_round
     process('pass', current) while game.round.is_a?(Engine::Round::Stock)
   end

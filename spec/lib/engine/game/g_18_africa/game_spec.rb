@@ -1,28 +1,16 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative 'spec_helpers'
 
 module Engine
   module Game
     module G18Africa
       describe Game do
+        include G18AfricaSpecHelpers
+
         let(:players) { %w[a b c] }
         let(:game) { Engine::Game::G18Africa::Game.new(players, id: 7) }
-
-        def step
-          game.round.active_step
-        end
-
-        def current
-          step.current_entity
-        end
-
-        def process(type, entity, **args)
-          action = { 'type' => type, 'entity' => entity.id, 'entity_type' => 'player' }
-          args.each { |k, v| action[k.to_s] = v }
-          game.process_action(action)
-          raise game.exception if game.exception
-        end
 
         def complete_selection
           game.players.size.times do
@@ -157,7 +145,7 @@ module Engine
             complete_selection
             complete_auction
             # nobody buys anything, so no company operates and SR 2 follows directly
-            process('pass', current) while game.stock_round_number == 1
+            advance while game.stock_round_number == 1
 
             expect(game.stock_round_number).to eq(2)
             top = game.bank_deck.first
@@ -185,7 +173,7 @@ module Engine
           before do
             complete_selection
             complete_auction
-            process('pass', current) while game.stock_round_number == 1
+            advance while game.stock_round_number == 1
             game.stock_market.move_left(ur) # 64 -> 61
             put_in_pool(cnr, 3)
             put_in_pool(ur, 1)

@@ -12,6 +12,8 @@ require_relative 'step/dividend'
 require_relative 'step/buy_train'
 require_relative 'step/track'
 require_relative 'step/corporate_stock'
+require_relative 'step/concession_auction'
+require_relative 'step/assign_concession'
 require_relative '../base'
 
 module Engine
@@ -22,7 +24,7 @@ module Engine
         include Entities
         include Map
 
-        attr_reader :bank_deck, :bank_discard, :auction_cards
+        attr_reader :bank_deck, :bank_discard, :auction_cards, :concession_right
 
         PLAYER_CLASS = G18Africa::Player
         CORPORATION_CLASS = G18Africa::Corporation
@@ -207,6 +209,7 @@ module Engine
           setup_corporation_prices
           create_bonds
           deal_cards
+          create_concessions
         end
 
         def setup
@@ -351,8 +354,9 @@ module Engine
           @bank.companies.select { |c| c.type == :bond }
         end
 
+        # Shares and Privates count; Bonds, cards in hand and unassigned Concessions do not [2.4]
         def num_certs(entity)
-          super - entity.companies.count { |c| c.type == :bond }
+          super - entity.companies.count { |c| c.type != :private }
         end
 
         # ----- Bank Deck and Bank Discard [2.2.1]
@@ -483,7 +487,14 @@ module Engine
           @stock_round_number || 0
         end
 
+        # The Concession Auction takes place after the first set of Operating Rounds [1.5]
         def new_stock_round
+          if stock_round_number == 1 && !@concessions_auctioned
+            @concessions_auctioned = true
+            @log << '-- Concession Auction --'
+            return Round::ConcessionAuction.new(self, [G18Africa::Step::ConcessionAuction])
+          end
+
           @stock_round_number = stock_round_number + 1
           super
         end
@@ -658,7 +669,89 @@ module Engine
 
         # Bonuses are neither multiplied by trains nor affected by the Economy [3.4.5, 3.4.6]
         def route_bonus(route)
-          transcontinental_bonus(route)
+          transcontinental_bonus(route) + concession_bonus(route)
+        end
+
+        # ----- Concessions [1.5, 3.4.5]
+
+        CONCESSION_NAMES = {
+          'MINERALS' => 'Minerals',
+          'DATES' => 'Dates',
+          'GAS' => 'Natural Gas',
+          'OIL' => 'Oil',
+          'COPPER' => 'Copper',
+          'COTTON' => 'Cotton',
+          'GOLD' => 'Gold',
+        }.freeze
+
+        def create_concessions
+          @concessions = CONCESSIONS.map do |id, data|
+            ports = data[:ports].map { |hex| LOCATION_NAMES[hex] }.join(' or ')
+            Company.new(
+              sym: "C_#{id}",
+              name: "#{CONCESSION_NAMES[id]} Concession",
+              value: 0,
+              desc: "Route including #{LOCATION_NAMES[data[:commodity]]} and #{ports}: "\
+                    "+#{format_currency(data[:bonus])} per train",
+              type: :concession,
+            )
+          end
+          @concession_right = Company.new(
+            sym: 'CONCESSION_CHOICE',
+            name: 'Choice of a Concession',
+            value: 0,
+            desc: 'The highest bidder chooses one of the remaining Concessions.',
+            type: :concession_right,
+          )
+          @companies.concat(@concessions + [@concession_right])
+        end
+
+        def concession_data(concession)
+          CONCESSIONS[concession.id.delete_prefix('C_')]
+        end
+
+        def concessions_available
+          @concessions.select { |c| c.owner.nil? && !c.closed? }
+        end
+
+        def award_concession(player, concession)
+          concession.owner = player
+          player.companies << concession
+          @log << "#{player.name} takes the #{concession.name}"
+        end
+
+        def remove_last_concession
+          concessions_available.each do |concession|
+            concession.close!
+            @log << "The #{concession.name} is removed from the game"
+          end
+        end
+
+        # The Company must be able to run the Concession route: it needs a train and must reach
+        # the Commodity and a port
+        def can_run_concession?(corporation, concession)
+          return false if corporation.trains.empty?
+
+          data = concession_data(concession)
+          hexes = graph_for_entity(corporation).connected_hexes(corporation)
+          hexes.key?(hex_by_id(data[:commodity])) && data[:ports].any? { |port| hexes.key?(hex_by_id(port)) }
+        end
+
+        def assign_concession(corporation, concession)
+          owner = concession.owner
+          owner.companies.delete(concession)
+          concession.owner = corporation
+          corporation.companies << concession
+          @log << "#{owner.name} assigns the #{concession.name} to #{corporation.name}"
+        end
+
+        # Each train including the Commodity and a port earns the bonus, not multiplied by the train
+        def concession_bonus(route)
+          hexes = route.all_hexes.map(&:id)
+          route.train.owner.companies.select { |c| c.type == :concession }.sum do |concession|
+            data = concession_data(concession)
+            hexes.include?(data[:commodity]) && data[:ports].intersect?(hexes) ? data[:bonus] : 0
+          end
         end
 
         def transcontinental_bonus(route)
@@ -884,6 +977,8 @@ module Engine
             when Engine::Round::Draft
               @log << "-- #{round_description('Initial Auction', 1)} --"
               initial_auction_round
+            when Round::ConcessionAuction
+              new_stock_round
             when Engine::Round::Auction
               give_priority_after_auction
               new_stock_round
@@ -903,6 +998,7 @@ module Engine
 
         def operating_round(round_num)
           Engine::Round::Operating.new(self, [
+            G18Africa::Step::AssignConcession,
             Engine::Step::HomeToken,
             G18Africa::Step::Track,
             Engine::Step::Token,

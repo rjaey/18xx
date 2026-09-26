@@ -57,7 +57,7 @@ module Engine
           it 'does not let a Company without a train upgrade a City' do
             lay(mf, 'D5', '115', [0])
             process('pass', mf) while game.round.current_entity == mf
-            process('pass', current) until current == mf
+            advance until current == mf
             expect(step.available_hex(mf, game.hex_by_id('D5'))).to be_nil
           end
         end

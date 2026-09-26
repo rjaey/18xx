@@ -57,7 +57,7 @@ module Engine
             bond = game.bonds_in_bank.first
             process('buy_company', player, company: bond.id, price: bond.value)
             cash = player.cash
-            process('pass', current) while game.stock_round_number == 1
+            advance while game.stock_round_number == 1
             # no company started, so both ORs pass immediately: two Recovery payouts of 15
             expect(player.cash).to eq(cash + 30)
           end
@@ -78,7 +78,7 @@ module Engine
 
           it 'values a Variable City by the best Non-Variable City on the route' do
             process('pass', mf)
-            process('pass', current) until current == mf && game.operating_round_number == 2
+            advance until current == mf && game.operating_round_number == 2
             run_marrakech_casablanca(@train)
             # Marrakech 20 + Casablanca (?+20) 40
             expect(step.total_revenue).to eq(60)
@@ -86,7 +86,7 @@ module Engine
 
           it 'moves the Share Price by the revenue relative to the Market Value' do
             process('pass', mf)
-            process('pass', current) until current == mf && game.operating_round_number == 2
+            advance until current == mf && game.operating_round_number == 2
             run_marrakech_casablanca(@train)
             price = mf.share_price.price # 71 after not running in OR 1
             process('dividend', mf, kind: 'payout')
@@ -95,10 +95,10 @@ module Engine
 
           it 'adds 20 to Cities in a Boom' do
             process('pass', mf)
-            process('pass', current) until current == mf && game.operating_round_number == 2
+            advance until current == mf && game.operating_round_number == 2
             run_marrakech_casablanca(@train)
             process('dividend', mf, kind: 'withhold')
-            process('pass', current) while game.operating_round_number == 2
+            advance while game.operating_round_number == 2
             process('pass', current) while game.round.is_a?(Engine::Round::Stock)
             expect(game.economy).to eq(:boom)
             run_marrakech_casablanca(@train)
@@ -160,7 +160,7 @@ module Engine
             process('pass', current) while game.round.is_a?(Engine::Round::Stock)
 
             expect(mf.share_price.price).to eq(76)
-            process('pass', current) while current == mf && game.operating_round_number == 1
+            advance while current == mf && game.operating_round_number == 1
             # one space for not paying, two more for being Managed without a train: 76 -> 71 -> 67 -> 64
             expect(mf.share_price.price).to eq(64)
           end

@@ -69,7 +69,7 @@ module Engine
 
           before do
             reach_first_stock_round
-            process('pass', current) while game.stock_round_number == 1
+            advance while game.stock_round_number == 1
           end
 
           def director_bundle(player)
