@@ -1051,6 +1051,12 @@ module Engine
           true
         end
 
+        # Cards in hand have no owner yet; always showing the value keeps the company table's
+        # three columns (name, value, income) aligned
+        def show_value_of_companies?(_owner)
+          true
+        end
+
         def player_card_rows(player)
           ['Cards in hand', player.hand.size.to_s]
         end
