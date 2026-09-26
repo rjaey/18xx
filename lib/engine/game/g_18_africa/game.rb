@@ -259,6 +259,36 @@ module Engine
           end
         end
 
+        # Once one City of a double City is taken and the other Company has yet to start, the free City is its
+        # home: it is reserved there too, so the map shows the Company in that City on every tile. While
+        # tokens wait to be re-placed after #10 the reservation is lifted, the Company laying #10 chooses first.
+        def update_double_city_reservations
+          DOUBLE_CITY_HEXES.each do |id|
+            hex = hex_by_id(id)
+            tile = hex.tile
+            waiting = tile.reservations
+            tile.cities.each { |city| waiting.each { |corporation| city.reservations.delete(corporation) } }
+            next if waiting.size != 1 || pending_token_on?(hex)
+
+            free = tile.cities.select { |city| city.tokens.compact.empty? }
+            free.first.add_reservation!(waiting.first) if free.size == 1
+          end
+        end
+
+        def pending_token_on?(hex)
+          @round.respond_to?(:pending_tokens) && @round.pending_tokens.any? { |p| p[:hexes].include?(hex) }
+        end
+
+        def action_processed(action)
+          super
+          update_double_city_reservations
+        end
+
+        # The hex-level label is only needed while the Company's City is not known yet
+        def render_hex_reservation?(corporation)
+          hex_by_id(corporation.coordinates).tile.cities.none? { |city| city.reserved_by?(corporation) }
+        end
+
         def place_home_token(corporation)
           return super unless DOUBLE_CITY_HEXES.include?(corporation.coordinates)
           return if corporation.tokens.first&.used

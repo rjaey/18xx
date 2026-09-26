@@ -92,13 +92,16 @@ module Engine
 
           before { reach_first_stock_round }
 
-          it 'reserves the hex, not a particular City' do
+          it 'reserves the hex, and the free City once the other Company has started' do
+            expect(m32.tile.cities.flat_map(&:reservations).compact).to be_empty
+            expect(m32.tile.reservations).to eq([csar, nza])
+
             start_with_director(csar)
             other = (game.corporations - [csar, nza]).first
             city = m32.tile.cities.find { |c| c.tokens.compact.empty? }
 
-            expect(m32.tile.cities.flat_map(&:reservations).compact).to be_empty
             expect(m32.tile.reservations).to eq([nza])
+            expect(city.reserved_by?(nza)).to be(true)
             game.bank.spend(500, other)
             expect(city.tokenable?(other, tokens: other.find_token_by_type)).to be(false)
           end
@@ -118,6 +121,35 @@ module Engine
             process('place_token', nza, city: cities[0].id, slot: 0, tokener: nza.id)
             expect(cities[1].tokened_by?(csar)).to be(true)
             expect(cities[0].tokened_by?(nza)).to be(true)
+          end
+
+          it 'shows the Company yet to start in the free City, also on upgraded tiles' do
+            start_with_director(csar)
+            finish_first_stock_round
+            process('pass', current) until current == csar
+            nza_city = -> { m32.tile.cities.find { |c| c.reserved_by?(nza) } }
+            expect(nza_city.call.tokens.compact).to be_empty # CSAR is in the other City of the pre-printed tile
+
+            lay(csar, 'M32', '10', [])
+            expect(nza_city.call).to be_nil # CSAR chooses first
+            process('place_token', csar, city: m32.tile.cities[1].id, slot: 0, tokener: csar.id)
+            expect(nza_city.call).to eq(m32.tile.cities[0])
+            expect(game.render_hex_reservation?(nza)).to be(false)
+
+            process('pass', current) while current == csar
+            game.buy_train(csar, game.depot.upcoming.first, :free)
+            advance until current == csar && step.is_a?(G18Africa::Step::Track)
+            tile = game.tiles.find { |t| t.name == '35' }
+            process('lay_tile', csar, hex: 'M32', tile: tile.id, rotation: 3)
+            city = nza_city.call
+            expect(city).not_to be_nil
+            expect(city.tokens.compact).to be_empty
+
+            process('pass', current) until game.round.is_a?(Engine::Round::Stock) || !game.round.operating?
+            advance until game.round.is_a?(Engine::Round::Stock)
+            start_with_director(nza)
+            expect(city.tokened_by?(nza)).to be(true)
+            expect(m32.tile.cities.flat_map(&:reservations).compact).to be_empty
           end
 
           it 'lets a Company choose its City when track was laid before it started' do
