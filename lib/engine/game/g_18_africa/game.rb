@@ -862,6 +862,8 @@ module Engine
               desc: "Route including #{LOCATION_NAMES[data[:commodity]]} and #{ports}: "\
                     "+#{format_currency(data[:bonus])} per train",
               type: :concession,
+              # lets the Abilities bar offer "Assign to <Company>" [3.4.5]
+              abilities: [{ type: 'assign_corporation', owner_type: 'player' }],
             )
           end
           @concession_right = Company.new(

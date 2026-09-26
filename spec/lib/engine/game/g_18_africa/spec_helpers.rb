@@ -13,11 +13,17 @@ module G18AfricaSpecHelpers
     action = {
       'type' => type,
       'entity' => entity.id,
-      'entity_type' => entity.player? ? 'player' : 'corporation',
+      'entity_type' => entity_type(entity),
     }
     args.each { |k, v| action[k.to_s] = v }
     game.process_action(action)
     raise game.exception if game.exception
+  end
+
+  def entity_type(entity)
+    return 'player' if entity.player?
+
+    entity.company? ? 'company' : 'corporation'
   end
 
   # Everybody keeps the first half of their hand; each nominator wins their card for 0

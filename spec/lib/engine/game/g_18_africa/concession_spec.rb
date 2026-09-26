@@ -96,6 +96,39 @@ module Engine
             expect(game.can_run_concession?(mf, concession('MINERALS'))).to be(false)
           end
 
+          it 'can be assigned during the turn, after the track is laid' do
+            game.award_concession(mf.owner, concession('MINERALS'))
+            game.buy_train(mf, game.depot.upcoming.first, :free)
+            finish_first_stock_round
+            reachable = false
+            allow(game).to receive(:can_run_concession?) { reachable }
+
+            expect(game.round.actions_for(mf)).not_to include('assign')
+            lay(mf, 'D5', '115', [3])
+            reachable = true
+            expect(game.round.actions_for(mf)).to include('assign')
+
+            process('assign', mf, target: 'C_MINERALS', target_type: 'company')
+            expect(mf.companies).to include(concession('MINERALS'))
+            expect(game.log.map(&:message).grep(/skips assign/)).to be_empty
+          end
+
+          it 'can be assigned from the Abilities bar by selecting the Concession' do
+            game.award_concession(mf.owner, concession('MINERALS'))
+            game.buy_train(mf, game.depot.upcoming.first, :free)
+            finish_first_stock_round
+            allow(game).to receive(:can_run_concession?).and_return(true)
+
+            expect(game.abilities(concession('MINERALS'), :assign_corporation)).to be_truthy
+            expect(game.round.actions_for(concession('MINERALS'))).to include('assign')
+            expect(game.round.step_for(concession('MINERALS'), 'assign').assignable_corporations(concession('MINERALS')))
+              .to eq([mf])
+
+            process('assign', concession('MINERALS'), target: 'MF', target_type: 'corporation')
+            expect(mf.companies).to include(concession('MINERALS'))
+            expect(game.abilities(concession('MINERALS'), :assign_corporation)).to be_nil
+          end
+
           it 'moves the Concession to the Company' do
             player = mf.owner
             game.award_concession(player, concession('MINERALS'))
