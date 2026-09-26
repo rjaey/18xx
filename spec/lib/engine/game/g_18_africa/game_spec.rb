@@ -43,6 +43,13 @@ module Engine
             expect(game.round).to be_a(Engine::Round::Draft)
           end
 
+          it 'keeps hands sorted by company abbreviation, Director first, Privates last' do
+            game.players.each do |player|
+              keys = player.hand.map { |card| game.card_sort_key(card) }
+              expect(keys).to eq(keys.sort)
+            end
+          end
+
           it 'uses 7 companies and removes a 2 and a 3 train with two players' do
             two = Engine::Game::G18Africa::Game.new(%w[a b], id: 7)
             expect(two.corporations.size).to eq(7)

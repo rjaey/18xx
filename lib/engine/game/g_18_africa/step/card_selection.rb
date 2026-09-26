@@ -41,7 +41,7 @@ module Engine
           end
 
           def available
-            current_entity.hand.sort_by { |c| [c.type, -c.value, c.name] }
+            current_entity.hand.sort_by { |card| @game.card_sort_key(card) }
           end
 
           def select_company(player, company)
@@ -77,8 +77,9 @@ module Engine
             raise GameError, 'Selected cards are not in hand' unless (keep - player.hand).empty?
             raise GameError, "Must keep exactly #{cards_to_keep} cards" unless keep.size == cards_to_keep
 
-            @game.auction_cards.concat(player.hand - keep)
+            @game.auction_cards.concat(@game.dealt_order(player, player.hand - keep))
             player.hand = keep
+            @game.sort_hand!(player)
             @log << "#{player.name} keeps #{keep.size} cards"
             @confirmed += 1
             @round.next_entity_index!

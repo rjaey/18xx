@@ -41,10 +41,8 @@ module Engine
           def tiered_auction_companies
             return [[@auctioning]] if @auctioning
 
-            groups = @game.auction_cards.group_by { |c| @game.share_card?(c) ? c.id.split('_').first : nil }
-            groups.sort_by { |corporation, _| corporation ? [0, corporation] : [1, ''] }.map do |_, cards|
-              cards.sort_by { |c| [c.type == :director ? 0 : 1, c.id] }
-            end
+            cards = @game.auction_cards.sort_by { |card| @game.card_sort_key(card) }
+            cards.chunk_while { |a, b| @game.card_sort_key(a)[0..1] == @game.card_sort_key(b)[0..1] }.to_a
           end
 
           def active_entities
@@ -132,6 +130,7 @@ module Engine
             player.spend(bid.price, @game.bank) if bid.price.positive?
             @game.remove_card(card)
             player.hand << card
+            @game.sort_hand!(player)
             @log << "#{player.name} wins #{card.name} for #{@game.format_currency(bid.price)} and takes it into hand"
 
             @bids.clear

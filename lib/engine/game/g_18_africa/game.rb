@@ -359,7 +359,12 @@ module Engine
             deck = deck.sort_by { rand }
           end
 
-          @players.each { |player| player.hand.concat(deck.shift(CERTS_DEALT[@players.size] - player.hand.size)) }
+          @dealt_hands = {}
+          @players.each do |player|
+            player.hand.concat(deck.shift(CERTS_DEALT[@players.size] - player.hand.size))
+            @dealt_hands[player] = player.hand.dup
+            sort_hand!(player)
+          end
           @bank_deck = deck
           @bank_discard = []
           @auction_cards = []
@@ -367,6 +372,25 @@ module Engine
 
         def privates
           @companies.select { |c| c.type == :private }
+        end
+
+        # Display order of cards: companies alphabetically by abbreviation with the Director's
+        # Certificate first, Privates last
+        def card_sort_key(card)
+          return [1, card.sym, 0, ''] unless share_card?(card)
+
+          [0, card.id.split('_').first, card.type == :director ? 0 : 1, card.id]
+        end
+
+        # The order of a hand has no meaning in the rules, so it is kept sorted for display
+        def sort_hand!(player)
+          player.hand.sort_by! { |card| card_sort_key(card) }
+        end
+
+        # Cards in the order they were dealt; the discards keep this order so that shuffling them
+        # gives the same result as before hands were sorted for display
+        def dealt_order(player, cards)
+          (@dealt_hands[player] || []).select { |card| cards.include?(card) }
         end
 
         def share_card?(card)
@@ -1067,7 +1091,7 @@ module Engine
           player = @round.current_entity
           return [] unless player&.player?
 
-          player.hand.sort_by { |c| [c.type, -c.value, c.name] }
+          player.hand.sort_by { |card| card_sort_key(card) }
         end
 
         # The Bank Discard is public information and shown top card first [2]
