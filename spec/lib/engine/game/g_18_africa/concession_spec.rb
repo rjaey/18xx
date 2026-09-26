@@ -31,6 +31,16 @@ module Engine
           end
         end
 
+        it 'marks every destination port with a sticky plaque of the bonus' do
+          G18Africa::Map::CONCESSIONS.each do |id, data|
+            data[:ports].each do |port|
+              icon = game.hex_by_id(port).tile.icons.find { |i| i.name == "#{id.downcase}-#{data[:bonus]}" }
+              expect(icon).not_to be_nil, "no plaque on #{port} for #{id}"
+              expect(icon.sticky).to be(true)
+            end
+          end
+        end
+
         describe 'Concession Auction' do
           before { reach_concession_auction }
 

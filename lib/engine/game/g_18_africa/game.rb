@@ -222,18 +222,23 @@ module Engine
           @connected_cities = connected_city_keys
         end
 
-        # Commodity locations of the Concessions get a sticky marker that stays when tiles are laid [3.4.5]
+        # Commodity locations get a diamond, destination ports a plaque with the bonus and the resource
+        # (like 18India); both are sticky and stay when tiles are laid [3.4.5]
         def mark_commodities
           CONCESSIONS.each do |id, data|
-            hex_by_id(data[:commodity]).tile.icons << Part::Icon.new("18_africa/#{id.downcase}", nil, true, nil, true,
-                                                                     large: true)
+            add_sticky_icon(data[:commodity], id.downcase)
+            data[:ports].each { |port| add_sticky_icon(port, "#{id.downcase}-#{data[:bonus]}") }
           end
         end
 
-        # The diamond-shaped commodity icons are drawn without the round background of large icons,
+        def add_sticky_icon(hex_id, image)
+          hex_by_id(hex_id).tile.icons << Part::Icon.new("18_africa/#{image}", nil, true, nil, true, large: true)
+        end
+
+        # Commodity diamonds and port plaques are drawn without the round background of large icons,
         # so they cannot be mistaken for tokens
         def decorate_marker(icon)
-          return unless CONCESSIONS.key?(icon.name.upcase)
+          return unless CONCESSIONS.key?(icon.name.split('-').first.upcase)
 
           { shape: :none }
         end
