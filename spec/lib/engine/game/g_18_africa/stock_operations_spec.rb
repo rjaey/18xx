@@ -122,6 +122,8 @@ module Engine
 
             # 5% of 1030 = 51.5 -> 51; 10% of 237 = 23.7 -> 23; 300 + 51 + 23
             expect(game.final_share_value(mf)).to eq(374)
+            allow(mf).to receive(:floated?).and_return(true)
+            expect(game.status_str(mf)).to eq('Share value: £374 (£300 + £23 holdings + £51 trains)')
           end
         end
       end

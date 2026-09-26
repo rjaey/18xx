@@ -1148,10 +1148,27 @@ module Engine
         # of Privates the Company owns, plus 5% of the face value of its trains; each addition is
         # rounded down separately (rule 4 example: 5% of 1030 -> 51, 10% of 237 -> 23)
         def final_share_value(corporation)
+          corporation.share_price.price + share_value_additions(corporation).sum
+        end
+
+        # [10% of owned Shares and Privates, 5% of trains], each rounded down to the full £
+        def share_value_additions(corporation)
           owned_shares = corporation.corporate_shares.sum { |s| s.corporation.share_price.price * s.num_shares }
           owned_privates = corporation.companies.select { |c| c.type == :private }.sum(&:value)
           trains = corporation.trains.sum(&:price)
-          corporation.share_price.price + ((owned_shares + owned_privates) / 10) + (trains / 20)
+          [(owned_shares + owned_privates) / 10, trains / 20]
+        end
+
+        # The value of a Share as scored at the end of the game, shown on the charter during the game [4]
+        def status_str(corporation)
+          return unless corporation.floated?
+
+          holdings, trains = share_value_additions(corporation)
+          parts = [format_currency(corporation.share_price.price)]
+          parts << "#{format_currency(holdings)} holdings" if holdings.positive?
+          parts << "#{format_currency(trains)} trains" if trains.positive?
+          str = "Share value: #{format_currency(final_share_value(corporation))}"
+          parts.size > 1 ? "#{str} (#{parts.join(' + ')})" : str
         end
 
         # Cash, £100 per Bond, face value of Privates and adjusted value of Shares; cards in hand are worth nothing.
