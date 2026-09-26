@@ -17,6 +17,27 @@ module Engine
         GAME_ISSUE_LABEL = '18Africa'
 
         PLAYER_RANGE = [2, 5].freeze
+
+        # Official variants [10]
+        OPTIONAL_RULES = [
+          {
+            sym: :two_player_auction,
+            short_name: 'Two player auction variant',
+            desc: 'The discards are shuffled, 8 of them go back into the Bank Deck and the top 8 '\
+                  'Bank Deck cards are auctioned instead, so nobody knows exactly what the other discarded.',
+            players: [2],
+          },
+          {
+            sym: :simpson,
+            short_name: 'Simpson variant',
+            desc: "Every player is dealt one Director's Certificate before the other cards.",
+          },
+          {
+            sym: :concessions_penalty,
+            short_name: 'Concessions variant',
+            desc: 'Each Concession bought in the auction but never assigned costs £100 at the end of the game.',
+          },
+        ].freeze
       end
     end
   end

@@ -85,6 +85,7 @@ module Engine
           # Discards are shuffled so nobody knows who discarded what [1.3]
           def reveal_discards
             @game.auction_cards.sort_by! { @game.rand }
+            @game.two_player_auction_swap
             @log << "Cards to be auctioned: #{@game.auction_cards.map(&:name).join(', ')}"
           end
 

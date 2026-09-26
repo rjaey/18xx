@@ -334,7 +334,20 @@ module Engine
           @companies.concat(share_cards)
 
           deck = (share_cards + privates).sort_by { rand }
-          @players.each { |player| player.hand = deck.shift(CERTS_DEALT[@players.size]) }
+          @players.each { |player| player.hand = [] }
+
+          # Simpson variant: every player starts with one Director's Certificate [10]
+          if @optional_rules.include?(:simpson)
+            directors = deck.select { |c| c.type == :director }.sort_by { rand }
+            @players.each do |player|
+              director = directors.shift
+              deck.delete(director)
+              player.hand << director
+            end
+            deck = deck.sort_by { rand }
+          end
+
+          @players.each { |player| player.hand.concat(deck.shift(CERTS_DEALT[@players.size] - player.hand.size)) }
           @bank_deck = deck
           @bank_discard = []
           @auction_cards = []
@@ -943,10 +956,25 @@ module Engine
           corporation.share_price.price + ((owned_shares + owned_privates) / 10) + (trains / 20)
         end
 
-        # Cash, £100 per Bond, face value of Privates and adjusted value of Shares; cards in hand are worth nothing
+        # Cash, £100 per Bond, face value of Privates and adjusted value of Shares; cards in hand are worth nothing.
+        # Concessions variant: £100 less for each Concession never assigned [10]
         def player_value(player)
-          player.cash + player.companies.sum(&:value) +
-            player.shares.sum { |s| s.num_shares * share_value_for_score(s.corporation) }
+          value = player.cash + player.companies.sum(&:value) +
+                  player.shares.sum { |s| s.num_shares * share_value_for_score(s.corporation) }
+          value -= 100 * player.companies.count { |c| c.type == :concession } if @optional_rules.include?(:concessions_penalty)
+          value
+        end
+
+        # Two player auction variant: 8 of the shuffled discards go back into the Bank Deck and the
+        # top 8 Bank Deck cards are auctioned instead [10]
+        def two_player_auction_swap
+          return if !@optional_rules.include?(:two_player_auction) || @players.size != 2
+
+          @auction_cards.sort_by! { rand }
+          returned = @auction_cards.shift(8)
+          @bank_deck = (@bank_deck + returned).sort_by { rand }
+          @auction_cards.concat(@bank_deck.shift(8))
+          @log << '8 discarded cards are shuffled back into the Bank Deck and replaced by 8 cards from it'
         end
 
         def share_value_for_score(corporation)
