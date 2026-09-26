@@ -43,6 +43,30 @@ module Engine
           ])
         end
 
+        describe 'economy display' do
+          it 'shows the fixed Recovery of the first two ORs in the title' do
+            expect(game.round_phase_string).to eq('Phase 2 - Economy: Recovery (fixed in ORs 1-2)')
+          end
+
+          it 'shows the Economy of the next OR during a Stock Round, based on the Bank Pool' do
+            allow(game).to receive(:operating_round_number).and_return(2)
+            allow(game).to receive(:bank_pool_certificates).and_return(4)
+            expect(game.round_phase_string).to eq('Phase 2 - Economy: Recession (4 in Bank Pool)')
+          end
+
+          it 'highlights the Economy in effect in the map legend' do
+            allow(game).to receive(:operating_round_number).and_return(4)
+            allow(game).to receive(:bank_pool_certificates).and_return(0)
+            _props, header, *rows = game.economy_legend('black', 'yellow', 'green', nil, nil, nil)
+            expect(header.map { |cell| cell[:text] }).to eq(['Bank Pool', 'Economy', 'Cities', 'Towns', 'Bonds'])
+            boom = rows.find { |row| row[1][:text] == 'Boom' }
+            recovery = rows.find { |row| row[1][:text] == 'Recovery' }
+            expect(boom.map { |cell| cell[:text] }).to eq(['0', 'Boom', '+£20', 'printed', '£10'])
+            expect(boom.first[:props][:style][:backgroundColor]).to eq('yellow')
+            expect(recovery.first[:props][:style][:backgroundColor]).to be_nil
+          end
+        end
+
         describe 'economy' do
           it 'is Recovery in the first two Operating Rounds regardless of the Bank Pool' do
             start_mf

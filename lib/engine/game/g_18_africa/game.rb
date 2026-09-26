@@ -676,7 +676,11 @@ module Engine
         end
 
         def economy
-          return :recovery if operating_round_number <= FIXED_RECOVERY_ORS
+          economy_for(operating_round_number)
+        end
+
+        def economy_for(or_number)
+          return :recovery if or_number <= FIXED_RECOVERY_ORS
 
           case bank_pool_certificates
           when 0 then :boom
@@ -684,6 +688,29 @@ module Engine
           when 3..6 then :recession
           else :depression
           end
+        end
+
+        # Outside an Operating Round the display shows the Economy of the next Operating Round
+        def displayed_or_number
+          @round&.operating? ? operating_round_number : operating_round_number + 1
+        end
+
+        def displayed_economy
+          economy_for(displayed_or_number)
+        end
+
+        def economy_description
+          reason =
+            if displayed_or_number <= FIXED_RECOVERY_ORS
+              "fixed in ORs 1-#{FIXED_RECOVERY_ORS}"
+            else
+              "#{bank_pool_certificates} in Bank Pool"
+            end
+          "Economy: #{ECONOMY_NAMES[displayed_economy]} (#{reason})"
+        end
+
+        def round_phase_string
+          "#{super} - #{economy_description}"
         end
 
         def economy_name
@@ -1072,7 +1099,52 @@ module Engine
         end
 
         def map_legends
-          %i[transcontinental_legend]
+          %i[economy_legend transcontinental_legend]
+        end
+
+        ECONOMY_POOL_RANGES = { boom: '0', recovery: '1-2', recession: '3-6', depression: '7+' }.freeze
+
+        def economy_delta_str(value)
+          return 'printed' if value.zero?
+
+          "#{value.positive? ? '+' : '-'}#{format_currency(value.abs)}"
+        end
+
+        # The Economy table of the printed board; the row in effect is highlighted [3.4.7]
+        def economy_legend(font_color, yellow, green, _brown, _gray, _red, action_processor: nil)
+          cell_style = {
+            border: '1px solid',
+            color: font_color,
+            'text-align': 'center',
+            'vertical-align': 'middle',
+            height: '28px',
+            padding: '0 0.5rem',
+          }
+          current = displayed_economy
+          highlight = { **cell_style, backgroundColor: yellow, color: 'black', 'font-weight': 'bold' }
+          header_style = { **cell_style, backgroundColor: green, color: 'black', 'font-weight': 'bold' }
+
+          rows = ECONOMY_NAMES.map do |level, name|
+            style = level == current ? highlight : cell_style
+            [ECONOMY_POOL_RANGES[level], name, economy_delta_str(ECONOMY_CITY_DELTA[level]),
+             economy_delta_str(ECONOMY_TOWN_DELTA[level]), format_currency(BOND_PAYOUT[level])]
+              .map { |text| { text: text, props: { style: style } } }
+          end
+          note_style = { **cell_style, 'text-align': 'left', 'font-size': '80%', padding: '0.2rem 0.5rem' }
+          notes = [
+            "#{economy_description}.",
+            'Shares and Privates in the Bank Pool count; Trains and Bonds do not.',
+            "ORs 1-#{FIXED_RECOVERY_ORS} are always played in Recovery.",
+            'Depression: every Share Price moves back one space at the start of an OR.',
+            'Values never drop below £0. 3+3T trains ignore Recession and Depression.',
+          ].map { |text| [{ text: text, props: { attrs: { colspan: 5 }, style: note_style } }] }
+
+          [
+            { style: { margin: '0.5rem 0 0.5rem 0', border: '1px solid', borderCollapse: 'collapse' } },
+            ['Bank Pool', 'Economy', 'Cities', 'Towns', 'Bonds'].map { |text| { text: text, props: { style: header_style } } },
+            *rows,
+            *notes,
+          ]
         end
 
         def transcontinental_legend(font_color, _yellow, green, _brown, _gray, _red, action_processor: nil)
