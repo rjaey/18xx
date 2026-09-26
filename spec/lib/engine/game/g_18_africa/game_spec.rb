@@ -114,6 +114,17 @@ module Engine
             expect(private_tiers.first.size).to be >= 2
           end
 
+          it 'keeps the remaining cards visible below the card being auctioned' do
+            complete_selection
+            card = game.auction_cards.first
+            process('bid', current, company: card.id, price: 0)
+
+            tiers = step.tiered_auction_companies
+            expect(tiers.first).to eq([card])
+            expect(tiers.drop(1).flatten).to match_array(game.auction_cards - [card])
+            expect(step.may_bid?(tiers.last.first)).to be(false)
+          end
+
           it 'gives auctioned cards to the winner, who pays the bid to the bank' do
             complete_selection
             nominator = current

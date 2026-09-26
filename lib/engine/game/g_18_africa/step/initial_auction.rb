@@ -37,12 +37,14 @@ module Engine
           end
 
           # One row per company in alphabetical order of the abbreviations (Director's Certificate
-          # first), Privates in a last row; the shuffled auction order itself is left untouched
+          # first), Privates in a last row; the shuffled auction order itself is left untouched.
+          # During an auction the card up for bids comes first and the others stay visible for
+          # overview; the view only offers bids on the card being auctioned.
           def tiered_auction_companies
-            return [[@auctioning]] if @auctioning
-
-            cards = @game.auction_cards.sort_by { |card| @game.card_sort_key(card) }
-            cards.chunk_while { |a, b| @game.card_group(a) == @game.card_group(b) }.to_a
+            others = @game.auction_cards - [@auctioning]
+            cards = others.sort_by { |card| @game.card_sort_key(card) }
+            rows = cards.chunk_while { |a, b| @game.card_group(a) == @game.card_group(b) }.to_a
+            @auctioning ? [[@auctioning]] + rows : rows
           end
 
           def active_entities
