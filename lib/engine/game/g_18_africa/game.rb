@@ -230,6 +230,14 @@ module Engine
           end
         end
 
+        # The diamond-shaped commodity icons are drawn without the round background of large icons,
+        # so they cannot be mistaken for tokens
+        def decorate_marker(icon)
+          return unless CONCESSIONS.key?(icon.name.upcase)
+
+          { shape: :none }
+        end
+
         # ----- Pre-printed yellow double Cities J21 and M32 [3.3.1]
 
         DOUBLE_CITY_HEXES = %w[J21 M32].freeze
