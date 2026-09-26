@@ -34,6 +34,15 @@ module Engine
           process('run_routes', mf, routes: [{ 'train' => train.id, 'connections' => [%w[D5 D3]] }])
         end
 
+        it 'lists the Transcontinental Routes in a map legend' do
+          _props, header, *rows = game.transcontinental_legend('black', nil, 'green', nil, nil, nil)
+          expect(header.first[:text]).to eq('Transcontinental Routes')
+          expect(rows.map { |r| r.map { |cell| cell[:text] } }).to eq([
+            ['Cairo (N7) ⟷ Cape Town (K36)', '£80'],
+            ['Dakar (B11) ⟷ Dar es Salaam (P23)', '£100'],
+          ])
+        end
+
         describe 'economy' do
           it 'is Recovery in the first two Operating Rounds regardless of the Bank Pool' do
             start_mf

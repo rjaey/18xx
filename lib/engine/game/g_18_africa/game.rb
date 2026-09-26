@@ -1066,6 +1066,45 @@ module Engine
 
         # ----- View helpers
 
+        # Legend next to the map listing the Transcontinental Routes, like 18India's connection bonuses [3.4.6]
+        def show_map_legend?
+          true
+        end
+
+        def map_legends
+          %i[transcontinental_legend]
+        end
+
+        def transcontinental_legend(font_color, _yellow, green, _brown, _gray, _red, action_processor: nil)
+          cell_style = {
+            border: '1px solid',
+            color: font_color,
+            'font-weight': 'bold',
+            'text-align': 'center',
+            'vertical-align': 'middle',
+            height: '33px',
+            padding: '0 0.5rem',
+          }
+          rows = TRANSCONTINENTAL_BONUSES.map do |bonus|
+            route = bonus[:hexes].map { |hex| "#{LOCATION_NAMES[hex]} (#{hex})" }.join(' ⟷ ')
+            [
+              { text: route, props: { style: cell_style } },
+              { text: format_currency(bonus[:bonus]), props: { style: cell_style } },
+            ]
+          end
+
+          [
+            { style: { margin: '0.5rem 0 0.5rem 0', border: '1px solid', borderCollapse: 'collapse' } },
+            [
+              {
+                text: 'Transcontinental Routes',
+                props: { attrs: { colspan: 2 }, style: { **cell_style, backgroundColor: green, color: 'black' } },
+              },
+            ],
+            *rows,
+          ]
+        end
+
         ROUND_TITLES = {
           'Draft' => 'Certificate Selection',
           'Auction' => 'Initial Auction',
