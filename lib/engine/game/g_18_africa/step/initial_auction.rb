@@ -36,6 +36,18 @@ module Engine
             @auctioning ? [@auctioning] : @game.auction_cards
           end
 
+          # One row per company (Director's Certificate first), Privates in a last row; the
+          # shuffled auction order itself is left untouched
+          def tiered_auction_companies
+            return [[@auctioning]] if @auctioning
+
+            order = @game.corporations.map(&:id)
+            groups = @game.auction_cards.group_by { |c| @game.share_card?(c) ? c.id.split('_').first : nil }
+            groups.sort_by { |corporation, _| order.index(corporation) || order.size }.map do |_, cards|
+              cards.sort_by { |c| [c.type == :director ? 0 : 1, c.id] }
+            end
+          end
+
           def active_entities
             return [] if finished?
 

@@ -84,6 +84,17 @@ module Engine
             expect(game.round).to be_a(Engine::Round::Auction)
           end
 
+          it 'shows the cards to auction grouped by company, Privates last' do
+            complete_selection
+            tiers = step.tiered_auction_companies
+            expect(tiers.flatten).to match_array(game.auction_cards)
+
+            shares = tiers.reject { |tier| tier.first.type == :private }
+            shares.each { |tier| expect(tier.map { |c| c.id.split('_').first }.uniq.size).to eq(1) }
+            expect(tiers.flat_map { |tier| tier.map(&:type) }.drop_while { |type| type != :private })
+              .to all(eq(:private))
+          end
+
           it 'gives auctioned cards to the winner, who pays the bid to the bank' do
             complete_selection
             nominator = current
