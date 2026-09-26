@@ -83,7 +83,8 @@ module Engine
             return nil unless available
             return (hex == @round.last_laid_hex ? available : nil) if @round.upgraded_track
             return nil if @round.last_laid_hex && !continuation_edges(@round.last_laid_hex).key?(hex)
-            return nil if !hex.tile.city_towns.empty? && hex.tile.color != :white && !upgrade_reachable_by_train?(entity, hex)
+            return nil if !hex.tile.city_towns.empty? && hex.tile.color != :white &&
+                          !home_hex_without_track?(entity, hex) && !upgrade_reachable_by_train?(entity, hex)
 
             available
           end
@@ -149,12 +150,19 @@ module Engine
           private
 
           def home_tile_lay?(entity, hex, tile)
+            return false unless home_hex_without_track?(entity, hex)
+
+            hex.tile.color == :white || tile.name == '10'
+          end
+
+          # A Company may build on its home hex while it has no track there, even without a train;
+          # on the pre-printed yellow double Cities this means laying #10 [3.2.2]
+          def home_hex_without_track?(entity, hex)
             return false unless entity&.corporation?
             return false unless @round.num_laid_track.zero?
             return false unless hex.id == entity.coordinates
 
-            old_tile = hex.tile
-            old_tile.color == :white || (old_tile.color == :yellow && old_tile.paths.empty? && tile.name == '10')
+            hex.tile.paths.empty? && %i[white yellow].include?(hex.tile.color)
           end
 
           # Only yellow track laying halts; an upgrade ends the lays anyway [3.2.1]

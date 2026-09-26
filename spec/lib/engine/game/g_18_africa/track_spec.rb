@@ -135,6 +135,25 @@ module Engine
           end
         end
 
+        %w[COR CNR CSAR NZA].each do |id|
+          context "with #{id} at home on a pre-printed double City without a train" do
+            let(:game) { Engine::Game::G18Africa::Game.new(players, id: seed_with(id)) }
+            let(:corporation) { game.corporation_by_id(id) }
+
+            it 'offers the home hex for #10 in its first Operating Round' do
+              reach_first_stock_round
+              start_with_director(corporation, funds: 0)
+              finish_first_stock_round
+              process('pass', current) until current == corporation
+
+              hex = game.hex_by_id(corporation.coordinates)
+              expect(corporation.trains).to be_empty
+              expect(step.available_hex(corporation, hex)).to be_truthy
+              expect(step.upgradeable_tiles(corporation, hex).map(&:name)).to include('10')
+            end
+          end
+        end
+
         describe 'Town to City upgrades' do
           let(:game) { Engine::Game::G18Africa::Game.new(players, id: 1) }
 
