@@ -763,18 +763,25 @@ module Engine
         end
 
         def stop_value(stop, route, current_economy)
+          [stop.route_revenue(route.phase, route.train) + economy_delta(stop, route, current_economy), 0].max
+        end
+
+        def economy_delta(stop, route, current_economy)
           delta = stop.city? ? ECONOMY_CITY_DELTA[current_economy] : ECONOMY_TOWN_DELTA[current_economy]
-          delta = 0 if delta.negative? && ECONOMY_PROOF_TRAINS.include?(route.train.name)
-          [stop.route_revenue(route.phase, route.train) + delta, 0].max
+          delta.negative? && ECONOMY_PROOF_TRAINS.include?(route.train.name) ? 0 : delta
         end
 
         # A Variable City is worth the best Non-Variable City on the route, counted or not, plus its modifier
         def variable_city_value(stop, route, current_economy)
-          best = route.visited_stops
-                      .select { |s| s.city? && !variable_city?(s) }
-                      .map { |s| stop_value(s, route, current_economy) }
-                      .max
+          _, best = best_non_variable_city(route, current_economy)
           best ? best + VARIABLE_CITY_MODIFIERS[stop.hex.id] : VARIABLE_CITY_DEFAULT
+        end
+
+        def best_non_variable_city(route, current_economy)
+          route.visited_stops
+               .select { |s| s.city? && !variable_city?(s) }
+               .map { |s| [s, stop_value(s, route, current_economy)] }
+               .max_by { |_, value| value }
         end
 
         def revenue_for(route, stops)
@@ -787,7 +794,11 @@ module Engine
 
         # Bonuses are neither multiplied by trains nor affected by the Economy [3.4.5, 3.4.6]
         def route_bonus(route)
-          transcontinental_bonus(route) + concession_bonus(route)
+          route_bonuses(route).sum { |_, amount| amount }
+        end
+
+        def route_bonuses(route)
+          transcontinental_bonuses(route) + concession_bonuses(route)
         end
 
         # ----- Private abilities [5]
@@ -904,23 +915,58 @@ module Engine
 
         # Each train including the Commodity and a port earns the bonus, not multiplied by the train
         def concession_bonus(route)
+          concession_bonuses(route).sum { |_, amount| amount }
+        end
+
+        def concession_bonuses(route)
           hexes = route.all_hexes.map(&:id)
-          route.train.owner.companies.select { |c| c.type == :concession }.sum do |concession|
+          route.train.owner.companies.select { |c| c.type == :concession }.filter_map do |concession|
             data = concession_data(concession)
-            hexes.include?(data[:commodity]) && data[:ports].intersect?(hexes) ? data[:bonus] : 0
+            [concession.name, data[:bonus]] if hexes.include?(data[:commodity]) && data[:ports].intersect?(hexes)
           end
         end
 
-        def transcontinental_bonus(route)
+        def transcontinental_bonuses(route)
           hexes = route.all_hexes.map(&:id)
-          TRANSCONTINENTAL_BONUSES.sum { |b| (b[:hexes] - hexes).empty? ? b[:bonus] : 0 }
+          TRANSCONTINENTAL_BONUSES.filter_map do |bonus|
+            next unless (bonus[:hexes] - hexes).empty?
+
+            ["#{bonus[:hexes].map { |hex| LOCATION_NAMES[hex] }.join(' - ')} Transcontinental", bonus[:bonus]]
+          end
         end
 
+        # Hexes of the route, then how the value of each counted stop came about, then the bonuses
         def revenue_str(route)
-          str = route.hexes.map(&:name).join('-')
-          bonus = route_bonus(route)
-          str += " + #{format_currency(bonus)}" if bonus.positive?
+          current_economy = economy
+          stops = route.stops.map { |stop| stop_revenue_str(stop, route, current_economy) }
+          str = "#{route.hexes.map(&:name).join('-')}: #{stops.join(', ')}"
+          multiplier = route.train.multiplier || 1
+          str += " x#{multiplier}" if multiplier > 1
+          route_bonuses(route).each { |name, amount| str += " + #{format_currency(amount)} #{name}" }
           str
+        end
+
+        def stop_revenue_str(stop, route, current_economy)
+          name = stop.hex.location_name || stop.hex.name
+          if variable_city?(stop)
+            value = variable_city_value(stop, route, current_economy)
+            best, best_value = best_non_variable_city(route, current_economy)
+            note = if best
+                     "#{best.hex.location_name || best.hex.name} #{format_currency(best_value)} + "\
+                       "#{format_currency(VARIABLE_CITY_MODIFIERS[stop.hex.id])}"
+                   else
+                     'no Non-Variable City'
+                   end
+            return "#{name} #{format_currency(value)} (#{note})"
+          end
+
+          value = stop_value(stop, route, current_economy)
+          delta = economy_delta(stop, route, current_economy)
+          return "#{name} #{format_currency(value)}" if delta.zero?
+
+          base = format_currency(stop.route_revenue(route.phase, route.train))
+          sign = delta.positive? ? '+' : '-'
+          "#{name} #{format_currency(value)} (#{base} #{sign} #{format_currency(delta.abs)} #{ECONOMY_NAMES[current_economy]})"
         end
 
         # At least two Cities; only 'T' trains may start or end in a Town [3.4.1]

@@ -139,6 +139,23 @@ module Engine
             expect(step.total_revenue).to eq(100)
           end
 
+          it 'explains the value of each stop in the log' do
+            process('pass', mf)
+            advance until current == mf && game.operating_round_number == 2
+            run_marrakech_casablanca(@train)
+            expect(game.log.map(&:message)).to include(
+              'MF runs a 2 train for £60: D5-D3: Marrakech £20, Casablanca £40 (Marrakech £20 + £20)'
+            )
+
+            process('dividend', mf, kind: 'withhold')
+            advance while game.operating_round_number == 2
+            process('pass', current) while game.round.is_a?(Engine::Round::Stock)
+            run_marrakech_casablanca(@train)
+            expect(game.log.map(&:message)).to include(
+              'MF runs a 2 train for £100: D5-D3: Marrakech £40 (£20 + £20 Boom), Casablanca £60 (Marrakech £40 + £20)'
+            )
+          end
+
           it 'sells a train back to the Bank for its resale price' do
             cash = mf.cash
             process('sell_train', mf, train: @train.id, price: @train.salvage)
