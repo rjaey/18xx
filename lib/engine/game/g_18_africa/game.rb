@@ -1001,6 +1001,16 @@ module Engine
           include_pending ? (keys + pending_keys).uniq : keys - pending_keys
         end
 
+        # An upgrade may renumber the Cities of a hex (#10 to #35 swaps them in some rotations): carry the
+        # connected Cities over to their new index so an upgrade never looks like a new connection.
+        def remap_connected_cities(hex, city_map)
+          remapped = city_map.filter_map do |old_city, new_city|
+            old_key = [hex.id, old_city.type, old_city.index]
+            [hex.id, new_city.type, new_city.index] if new_city && @connected_cities.include?(old_key)
+          end
+          @connected_cities = @connected_cities.reject { |key| key[0] == hex.id } + remapped
+        end
+
         def check_connection_bonus(entity, hex, town_upgrade: false)
           now = connected_city_keys
           newly = now - @connected_cities

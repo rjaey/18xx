@@ -135,6 +135,37 @@ module Engine
           end
         end
 
+        context 'when upgrading a connected double City' do
+          let(:game) { Engine::Game::G18Africa::Game.new(players, id: seed_with('CSAR')) }
+          let(:csar) { game.corporation_by_id('CSAR') }
+          let(:m32) { game.hex_by_id('M32') }
+
+          before do
+            m32.lay(game.tiles.find { |t| t.name == '10' })
+            reach_first_stock_round
+            start_with_director(csar)
+            process('place_token', csar, city: m32.tile.cities[0].id, slot: 0, tokener: csar.id)
+            game.buy_train(csar, game.depot.upcoming.first, :free)
+            finish_first_stock_round
+            process('pass', current) until current == csar
+          end
+
+          it 'pays no Connection Bonus when #35 renumbers its Cities' do
+            game.instance_variable_set(:@connected_cities, [['M32', 'city', 0]])
+            # the connected City (with CSAR's token) becomes City 1 of #35 in rotation 3
+            allow(game).to receive(:connected_city_keys) do
+              m32.tile.cities.select { |c| c.tokened_by?(csar) }.map { |c| game.node_key(c) }
+            end
+            cash = csar.cash
+
+            tile = game.tiles.find { |t| t.name == '35' }
+            process('lay_tile', csar, hex: 'M32', tile: tile.id, rotation: 3)
+            expect(m32.tile.cities[1].tokened_by?(csar)).to be(true)
+            expect(csar.cash).to eq(cash)
+            expect(game.log.map(&:message).grep(/Connection Bonus/)).to be_empty
+          end
+        end
+
         %w[COR CNR CSAR NZA].each do |id|
           context "with #{id} at home on a pre-printed double City without a train" do
             let(:game) { Engine::Game::G18Africa::Game.new(players, id: seed_with(id)) }

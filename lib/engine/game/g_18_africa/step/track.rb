@@ -118,6 +118,8 @@ module Engine
             had_town = !hex.tile.towns.empty?
             fifth_lay = @round.num_laid_track == 4
             second_upgrade = @round.upgraded_track
+            tile.rotate!(action.rotation)
+            city_map = hex.city_map_for(tile)
 
             # the engine asks again after the tile is placed, when the old tile is already gone
             @home_lay = home_lay
@@ -126,6 +128,7 @@ module Engine
             @game.use_private_ability!('P2', entity) if fifth_lay
             @game.use_private_ability!('P3', entity) if second_upgrade
             @round.last_laid_hex = hex
+            @game.remap_connected_cities(hex, city_map)
             @game.check_connection_bonus(entity, hex, town_upgrade: had_town && !tile.cities.empty?)
 
             @round.track_halted = halts?(entity, tile, reachable_before, home_lay)
