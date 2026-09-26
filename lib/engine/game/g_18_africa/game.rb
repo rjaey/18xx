@@ -217,8 +217,17 @@ module Engine
         def setup
           remove_home_reservations(@removals)
           reserve_double_city_hexes
+          mark_commodities
           # Tangier and Casablanca start connected to each other, no bonus for them [3.2.4]
           @connected_cities = connected_city_keys
+        end
+
+        # Commodity locations of the Concessions get a sticky marker that stays when tiles are laid [3.4.5]
+        def mark_commodities
+          CONCESSIONS.each do |id, data|
+            hex_by_id(data[:commodity]).tile.icons << Part::Icon.new("18_africa/#{id.downcase}", nil, true, nil, true,
+                                                                     large: true)
+          end
         end
 
         # ----- Pre-printed yellow double Cities J21 and M32 [3.3.1]

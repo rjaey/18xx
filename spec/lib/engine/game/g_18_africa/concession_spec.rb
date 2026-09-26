@@ -23,6 +23,14 @@ module Engine
           process('pass', current) while game.round.is_a?(Engine::Round::Operating)
         end
 
+        it 'marks every Commodity location on the map with a sticky icon' do
+          G18Africa::Map::CONCESSIONS.each do |id, data|
+            icon = game.hex_by_id(data[:commodity]).tile.icons.find { |i| i.name == id.downcase }
+            expect(icon).not_to be_nil
+            expect(icon.sticky).to be(true)
+          end
+        end
+
         describe 'Concession Auction' do
           before { reach_concession_auction }
 
