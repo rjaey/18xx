@@ -60,6 +60,14 @@ module Engine
         end
 
         describe 'certificate selection and initial auction' do
+          # the player card view reads step.choices[player] while the selection is hidden
+          it 'exposes the selected cards per player for the view' do
+            player = current
+            card = player.hand.first
+            step.select_company(player, card)
+            expect(step.choices[player]).to eq([card])
+          end
+
           it 'keeps half of the hand and auctions the discards' do
             complete_selection
             expect(game.players.map { |p| p.hand.size }).to all(eq(7))

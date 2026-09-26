@@ -10,6 +10,9 @@ module Engine
         class CardSelection < Engine::Step::Base
           ACTIONS = %w[select_multiple_companies].freeze
 
+          # Selected cards per player; the player card view shows them while the selection is hidden
+          attr_reader :choices
+
           def actions(entity)
             return [] if finished? || entity != current_entity
 
