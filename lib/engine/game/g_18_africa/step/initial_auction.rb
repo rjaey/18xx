@@ -43,7 +43,8 @@ module Engine
           def tiered_auction_companies
             others = @game.auction_cards - [@auctioning]
             cards = others.sort_by { |card| @game.card_sort_key(card) }
-            rows = cards.chunk_while { |a, b| @game.card_group(a) == @game.card_group(b) }.to_a
+            # group_by keeps the sorted order; Opal's chunk_while drops a single-element array
+            rows = cards.group_by { |card| @game.card_group(card) }.values
             @auctioning ? [[@auctioning]] + rows : rows
           end
 

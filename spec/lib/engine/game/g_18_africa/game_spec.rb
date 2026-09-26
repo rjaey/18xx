@@ -125,6 +125,13 @@ module Engine
             expect(step.may_bid?(tiers.last.first)).to be(false)
           end
 
+          it 'still shows the last card left for the auction' do
+            complete_selection
+            last = game.auction_cards.first
+            game.auction_cards.replace([last])
+            expect(step.tiered_auction_companies).to eq([[last]])
+          end
+
           it 'gives auctioned cards to the winner, who pays the bid to the bank' do
             complete_selection
             nominator = current
