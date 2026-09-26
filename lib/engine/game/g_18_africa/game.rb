@@ -1151,12 +1151,13 @@ module Engine
           corporation.share_price.price + share_value_additions(corporation).sum
         end
 
-        # [10% of owned Shares and Privates, 5% of trains], each rounded down to the full £
+        # [10% of owned Shares and Privates, 5% of trains], each rounded down to the full £ (div: in the
+        # browser a plain / of two integers gives a float)
         def share_value_additions(corporation)
           owned_shares = corporation.corporate_shares.sum { |s| s.corporation.share_price.price * s.num_shares }
           owned_privates = corporation.companies.select { |c| c.type == :private }.sum(&:value)
           trains = corporation.trains.sum(&:price)
-          [(owned_shares + owned_privates) / 10, trains / 20]
+          [(owned_shares + owned_privates).div(10), trains.div(20)]
         end
 
         # The value of a Share as scored at the end of the game, shown on the charter during the game [4]
