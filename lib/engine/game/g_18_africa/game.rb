@@ -14,6 +14,8 @@ require_relative 'step/track'
 require_relative 'step/corporate_stock'
 require_relative 'step/concession_auction'
 require_relative 'step/assign_concession'
+require_relative 'step/token'
+require_relative 'step/priority_deal'
 require_relative '../base'
 
 module Engine
@@ -487,12 +489,18 @@ module Engine
           @stock_round_number || 0
         end
 
-        # The Concession Auction takes place after the first set of Operating Rounds [1.5]
+        # The Concession Auction takes place after the first set of Operating Rounds [1.5].
+        # At the start of a Stock Round the owner of Madianos Olive Groves may take the Priority Deal [5]
         def new_stock_round
           if stock_round_number == 1 && !@concessions_auctioned
             @concessions_auctioned = true
             @log << '-- Concession Auction --'
             return Round::ConcessionAuction.new(self, [G18Africa::Step::ConcessionAuction])
+          end
+
+          if stock_round_number >= 1 && @priority_offered_for != stock_round_number && private_usable?(nil, 'P6')
+            @priority_offered_for = stock_round_number
+            return Round::PriorityDeal.new(self, [G18Africa::Step::PriorityDeal])
           end
 
           @stock_round_number = stock_round_number + 1
@@ -670,6 +678,45 @@ module Engine
         # Bonuses are neither multiplied by trains nor affected by the Economy [3.4.5, 3.4.6]
         def route_bonus(route)
           transcontinental_bonus(route) + concession_bonus(route)
+        end
+
+        # ----- Private abilities [5]
+
+        # Each ability can be used once per game; the Private keeps its income afterwards
+        def private_usable?(corporation, sym)
+          company = company_by_id(sym)
+          return false if !company || company.closed? || used_private_ability?(sym)
+
+          owner = company.owner
+          return owner&.player? && !owner.bankrupt if corporation.nil?
+          # Madianos Olive Groves can be owned, but not used by a Company
+          return false if sym == 'P6'
+
+          owner == corporation || (owner&.player? && corporation.player == owner)
+        end
+
+        def used_private_ability?(sym)
+          (@used_private_abilities || []).include?(sym)
+        end
+
+        def use_private_ability!(sym, user)
+          @used_private_abilities = (@used_private_abilities || []) + [sym]
+          company = company_by_id(sym)
+          company.desc = 'Ability used.'
+          @log << "#{user.name} uses the ability of #{company.name}"
+        end
+
+        # Jamieson Tropical Timber waives one river cost once switched on for the next lay
+        def upgrade_cost(tile, hex, entity, spender)
+          cost = super
+          return cost if !@round.respond_to?(:free_river) || !@round.free_river
+
+          river = tile.upgrades.select(&:water?).sum(&:cost)
+          return cost unless river.positive?
+
+          @round.free_river = false
+          use_private_ability!('P4', entity)
+          cost - river
         end
 
         # ----- Concessions [1.5, 3.4.5]
@@ -977,7 +1024,7 @@ module Engine
             when Engine::Round::Draft
               @log << "-- #{round_description('Initial Auction', 1)} --"
               initial_auction_round
-            when Round::ConcessionAuction
+            when Round::ConcessionAuction, Round::PriorityDeal
               new_stock_round
             when Engine::Round::Auction
               give_priority_after_auction
@@ -1001,7 +1048,7 @@ module Engine
             G18Africa::Step::AssignConcession,
             Engine::Step::HomeToken,
             G18Africa::Step::Track,
-            Engine::Step::Token,
+            G18Africa::Step::Token,
             Engine::Step::Route,
             G18Africa::Step::Dividend,
             G18Africa::Step::BuyTrain,

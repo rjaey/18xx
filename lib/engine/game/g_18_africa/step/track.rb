@@ -16,14 +16,27 @@ module Engine
         class Track < Engine::Step::Track
           HALTING_TILES = %w[3 7].freeze
 
+          # Allen Rock Aggregates: a fifth yellow tile; Thompson Wagon Works: a second upgrade of the
+          # same tile; Jamieson Tropical Timber: one free river crossing [5]
+          FIFTH_LAY = { lay: true, upgrade: false, cost: 0, upgrade_cost: 0, cannot_reuse_same_hex: false }.freeze
+          SECOND_UPGRADE = { lay: false, upgrade: true, cost: 0, upgrade_cost: 0, cannot_reuse_same_hex: false }.freeze
+
           def round_state
-            super.merge(last_laid_hex: nil, track_halted: false)
+            super.merge(last_laid_hex: nil, track_halted: false, free_river: false)
           end
 
           def setup
             super
             @round.last_laid_hex = nil
             @round.track_halted = false
+            @round.free_river = false
+          end
+
+          def actions(entity)
+            actions = super
+            return actions if actions.empty? || !free_river_available?(entity)
+
+            actions + ['choose']
           end
 
           def can_lay_tile?(entity)
@@ -32,9 +45,43 @@ module Engine
             super
           end
 
+          def get_tile_lay(entity)
+            tile_lay = super
+            return tile_lay if tile_lay && (tile_lay[:lay] || tile_lay[:upgrade])
+
+            corporation = get_tile_lay_corporation(entity)
+            if @round.upgraded_track
+              return SECOND_UPGRADE.dup if @round.num_upgraded_track == 1 && @game.private_usable?(corporation, 'P3')
+            elsif tile_lay_index == 4 && @game.private_usable?(corporation, 'P2')
+              return FIFTH_LAY.dup
+            end
+            tile_lay
+          end
+
+          def free_river_available?(entity)
+            !@round.free_river && @game.private_usable?(entity, 'P4')
+          end
+
+          def choice_available?(entity)
+            free_river_available?(entity)
+          end
+
+          def choice_name
+            'Jamieson Tropical Timber'
+          end
+
+          def choices
+            { 'free_river' => 'The next river crossing is free' }
+          end
+
+          def process_choose(_action)
+            @round.free_river = true
+          end
+
           def available_hex(entity, hex)
             available = super
             return nil unless available
+            return (hex == @round.last_laid_hex ? available : nil) if @round.upgraded_track
             return nil if @round.last_laid_hex && !continuation_edges(@round.last_laid_hex).key?(hex)
             return nil if !hex.tile.city_towns.empty? && hex.tile.color != :white && !upgrade_reachable_by_train?(entity, hex)
 
@@ -42,7 +89,7 @@ module Engine
           end
 
           def legal_tile_rotation?(entity, hex, tile)
-            if (last = @round.last_laid_hex)
+            if !@round.upgraded_track && (last = @round.last_laid_hex)
               required = continuation_edges(last)[hex]
               return false unless required
               return false unless required.any? { |edge| tile.exits.include?(edge) }
@@ -68,11 +115,15 @@ module Engine
             home_lay = home_tile_lay?(entity, hex, tile)
             reachable_before = reachable_cities(entity)
             had_town = !hex.tile.towns.empty?
+            fifth_lay = @round.num_laid_track == 4
+            second_upgrade = @round.upgraded_track
 
             # the engine asks again after the tile is placed, when the old tile is already gone
             @home_lay = home_lay
             lay_tile_action(action)
             @home_lay = false
+            @game.use_private_ability!('P2', entity) if fifth_lay
+            @game.use_private_ability!('P3', entity) if second_upgrade
             @round.last_laid_hex = hex
             @game.check_connection_bonus(entity, hex, town_upgrade: had_town && !tile.cities.empty?)
 
@@ -106,7 +157,9 @@ module Engine
             old_tile.color == :white || (old_tile.color == :yellow && old_tile.paths.empty? && tile.name == '10')
           end
 
+          # Only yellow track laying halts; an upgrade ends the lays anyway [3.2.1]
           def halts?(entity, tile, reachable_before, home_lay)
+            return false if tile.color != :yellow && !home_lay
             return true if HALTING_TILES.include?(tile.name)
             return true if !home_lay && !tile.cities.empty?
 
