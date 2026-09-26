@@ -382,6 +382,11 @@ module Engine
           [0, card.id.split('_').first, card.type == :director ? 0 : 1, card.id]
         end
 
+        # Display group of a card: its company's abbreviation, or one group for all Privates
+        def card_group(card)
+          share_card?(card) ? card.id.split('_').first : :private
+        end
+
         # The order of a hand has no meaning in the rules, so it is kept sorted for display
         def sort_hand!(player)
           player.hand.sort_by! { |card| card_sort_key(card) }

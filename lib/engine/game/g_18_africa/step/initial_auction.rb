@@ -42,7 +42,7 @@ module Engine
             return [[@auctioning]] if @auctioning
 
             cards = @game.auction_cards.sort_by { |card| @game.card_sort_key(card) }
-            cards.chunk_while { |a, b| @game.card_sort_key(a)[0..1] == @game.card_sort_key(b)[0..1] }.to_a
+            cards.chunk_while { |a, b| @game.card_group(a) == @game.card_group(b) }.to_a
           end
 
           def active_entities

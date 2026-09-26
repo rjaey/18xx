@@ -104,6 +104,16 @@ module Engine
               .to all(eq(:private))
           end
 
+          it 'shows all Privates of the initial auction in one row' do
+            complete_selection
+            game.auction_cards.concat(game.bank_deck.select { |c| c.type == :private })
+            private_tiers = step.tiered_auction_companies.select { |tier| tier.any? { |c| c.type == :private } }
+
+            expect(private_tiers.size).to eq(1)
+            expect(private_tiers.first).to all(have_attributes(type: :private))
+            expect(private_tiers.first.size).to be >= 2
+          end
+
           it 'gives auctioned cards to the winner, who pays the bid to the bank' do
             complete_selection
             nominator = current
