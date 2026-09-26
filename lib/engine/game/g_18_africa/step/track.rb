@@ -167,9 +167,8 @@ module Engine
           end
 
           def reachable_cities(entity)
-            @game.graph_for_entity(entity).connected_nodes(entity).keys
-                 .select(&:city?)
-                 .map { |city| [city.hex.id, city.index] }
+            # a token waiting to be re-placed on the laid hex does not make its Cities newly reached
+            @game.reachable_city_keys(entity, include_pending: false)
           end
 
           # Hexes adjacent to the last laid tile, following pre-printed gray track, with the edge(s)

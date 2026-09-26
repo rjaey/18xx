@@ -258,6 +258,7 @@ module Engine
           city = free.find { |c| c.index == corporation.city } || free.first
           @log << "#{corporation.name} places a token on #{hex.name}"
           city.place_token(corporation, token)
+          clear_graph
         end
 
         # Shuffle the 17 charters and keep 9 of them (7 with two players) [1.3]
@@ -401,7 +402,12 @@ module Engine
           @log << 'The Bank Deck is empty; the Bank Discard is shuffled to form a new Bank Deck'
           @bank_deck = @bank_discard.sort_by { rand }
           @bank_discard = []
-          flip_top_card!
+          # the top card starts a new Bank Discard, unless it is the only card left
+          return if @bank_deck.size < 2
+
+          card = @bank_deck.shift
+          @bank_discard << card
+          @log << "#{card.name} is revealed from the Bank Deck onto the Bank Discard"
         end
 
         # With three or fewer cards left in Deck and Discard, all of them are displayed face up [2.2.1]
@@ -525,6 +531,8 @@ module Engine
           # New markers are placed below markers already on the space [2.3]
           corporation.share_price.corporations << corporation
           place_home_token(corporation)
+          # tokens placed outside a token step must invalidate the cached route graph
+          clear_graph
         end
 
         # ----- Director and Manager [2.3]
@@ -893,13 +901,24 @@ module Engine
           hex_by_id(key[0]).tile.cities.find { |city| city.index == key[2] }
         end
 
+        # Cities the Company can trace a route to. The graph is rebuilt first so the result never depends on
+        # what was cached before (replays skip some checks that build it). A token waiting to be re-placed
+        # after #10 was laid counts as present in its hex.
+        def reachable_city_keys(entity, include_pending: true)
+          clear_graph_for_entity(entity)
+          keys = graph_for_entity(entity).connected_nodes(entity).keys.select(&:city?).map { |c| node_key(c) }
+          pending_hexes = @round.pending_tokens.select { |p| p[:entity] == entity }.flat_map { |p| p[:hexes] }
+          pending_keys = pending_hexes.flat_map { |h| h.tile.cities.map { |c| node_key(c) } }
+          include_pending ? (keys + pending_keys).uniq : keys - pending_keys
+        end
+
         def check_connection_bonus(entity, hex, town_upgrade: false)
           now = connected_city_keys
           newly = now - @connected_cities
           @connected_cities |= now
           return if newly.empty?
 
-          reachable = graph_for_entity(entity).connected_nodes(entity).keys.select(&:city?).map { |c| node_key(c) }
+          reachable = reachable_city_keys(entity)
           newly.each do |key|
             city = city_for_key(key)
             name = city.hex.location_name || city.hex.id
@@ -942,6 +961,8 @@ module Engine
           end
           @companies.select { |c| share_card?(c) && c.id.start_with?("#{corporation.id}_") }.each { |c| remove_card(c) }
           super
+          # its tokens are gone, so routes of other Companies change
+          clear_graph
         end
 
         # ----- Game end [4]

@@ -194,6 +194,25 @@ module Engine
           end
         end
 
+        describe 'running low on cards' do
+          it 'reshuffles the Bank Discard when the Bank Deck runs out' do
+            game.bank_deck.replace(game.bank_deck.first(1))
+            game.bank_discard.replace(game.companies.select { |c| c.type == :share }.last(3))
+            game.flip_top_card!
+
+            expect(game.bank_deck.size + game.bank_discard.size).to eq(4)
+            expect(game.bank_discard.size).to eq(1)
+          end
+
+          it 'does not loop when only a single card is left' do
+            game.bank_deck.replace(game.bank_deck.first(1))
+            game.bank_discard.clear
+            game.flip_top_card!
+
+            expect(game.bank_deck.size + game.bank_discard.size).to eq(1)
+          end
+        end
+
         it 'replays to the identical state from its actions' do
           complete_selection
           complete_auction
