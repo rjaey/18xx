@@ -152,7 +152,7 @@ module Engine
             process('pass', current) while game.round.is_a?(Engine::Round::Stock)
             run_marrakech_casablanca(@train)
             expect(game.log.map(&:message)).to include(
-              'MF runs a 2 train for £100: D5-D3: Marrakech £40 (£20 + £20 Boom), Casablanca £60 (Marrakech £40 + £20)'
+              'MF runs a 2 train for £100: D5-D3: Marrakech £40 (+£20 Boom), Casablanca £60 (Marrakech £40 + £20)'
             )
           end
 

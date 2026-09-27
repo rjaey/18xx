@@ -983,22 +983,19 @@ module Engine
           if variable_city?(stop)
             value = variable_city_value(stop, route, current_economy)
             best, best_value = best_non_variable_city(route, current_economy)
-            note = if best
-                     "#{best.hex.location_name || best.hex.name} #{format_currency(best_value)} + "\
-                       "#{format_currency(VARIABLE_CITY_MODIFIERS[stop.hex.id])}"
-                   else
-                     'no Non-Variable City'
-                   end
-            return "#{name} #{format_currency(value)} (#{note})"
+            return "#{name} #{format_currency(value)}" unless best
+
+            modifier = format_currency(VARIABLE_CITY_MODIFIERS[stop.hex.id])
+            return "#{name} #{format_currency(value)} (#{best.hex.location_name || best.hex.name} "\
+                   "#{format_currency(best_value)} + #{modifier})"
           end
 
           value = stop_value(stop, route, current_economy)
           delta = economy_delta(stop, route, current_economy)
           return "#{name} #{format_currency(value)}" if delta.zero?
 
-          base = format_currency(stop.route_revenue(route.phase, route.train))
           sign = delta.positive? ? '+' : '-'
-          "#{name} #{format_currency(value)} (#{base} #{sign} #{format_currency(delta.abs)} #{ECONOMY_NAMES[current_economy]})"
+          "#{name} #{format_currency(value)} (#{sign}#{format_currency(delta.abs)} #{ECONOMY_NAMES[current_economy]})"
         end
 
         # At least two Cities; only 'T' trains may start or end in a Town [3.4.1]
