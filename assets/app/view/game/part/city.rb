@@ -16,6 +16,7 @@ module View
 
         needs :tile
         needs :city
+        needs :game, default: nil, store: true
         needs :show_revenue
 
         # key is how many city slots are part of the city; value is the offset for
@@ -347,7 +348,8 @@ module View
         end
 
         def render_revenue
-          return if @city.hide
+          # games opt in to hiding the revenue of Cities marked hide (e.g. 18Africa's Variable Cities)
+          return if @city.hide && @game.respond_to?(:hide_city_revenue?) && @game.hide_city_revenue?
 
           revenues = @city.uniq_revenues
           return if revenues.size > 1
