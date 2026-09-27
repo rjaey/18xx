@@ -10,7 +10,8 @@ module Engine
         # - each further yellow tile continues directly from the previous one, possibly across
         #   pre-printed gray track [3.2.1]
         # - laying stops after a sharp curve (#3, #7), a tile with a City, or connecting to a new City
-        # - Cities and Towns may only be upgraded if a train of the Company reaches them [3.2.3]
+        # - Cities and Towns may only be upgraded by a Company owning a train; the hex must be
+        #   connected as for any lay, the train need not reach the City or Town itself [3.2.3]
         # - a Company without track on its home hex may lay its home City tile (or #10 on the
         #   pre-printed yellow double Cities) and continue with further yellow tiles [3.2.2]
         class Track < Engine::Step::Track
@@ -84,7 +85,7 @@ module Engine
             return (hex == @round.last_laid_hex ? available : nil) if @round.upgraded_track
             return nil if @round.last_laid_hex && !continuation_edges(@round.last_laid_hex).key?(hex)
             return nil if !hex.tile.city_towns.empty? && hex.tile.color != :white &&
-                          !home_hex_without_track?(entity, hex) && !upgrade_reachable_by_train?(entity, hex)
+                          !home_hex_without_track?(entity, hex) && entity.trains.empty?
 
             available
           end
@@ -210,14 +211,6 @@ module Engine
 
           def gray_track?(hex)
             hex.tile.color == :gray && hex.tile.city_towns.empty? && !hex.tile.paths.empty?
-          end
-
-          # A City or Town may only be upgraded if one of the Company's trains can reach it
-          def upgrade_reachable_by_train?(entity, hex)
-            return false if entity.trains.empty?
-
-            nodes = @game.graph_for_entity(entity).connected_nodes(entity)
-            hex.tile.city_towns.any? { |ct| nodes[ct] }
           end
 
           def town_to_city_rotation?(hex, old_tile, tile)

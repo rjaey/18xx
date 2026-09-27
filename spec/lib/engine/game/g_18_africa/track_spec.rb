@@ -54,6 +54,26 @@ module Engine
             expect(step).not_to be_a(G18Africa::Step::Track)
           end
 
+          it 'lets a Company with a train upgrade a connected Town its train does not reach' do
+            # Agadir (C6) has a yellow Town whose track points away from Marrakech
+            agadir = game.hex_by_id('C6')
+            town = game.tiles.find { |t| t.name == '3' }
+            rotation = (0..5).find do |r|
+              town.rotate!(r)
+              !town.exits.include?(agadir.invert(1))
+            end
+            town.rotate!(rotation)
+            agadir.lay(town)
+            lay(mf, 'D5', '115', [1]) # home City towards Agadir
+            process('pass', current) while current == mf
+            game.buy_train(mf, game.depot.upcoming.first, :free)
+            advance until current == mf && step.is_a?(G18Africa::Step::Track)
+
+            nodes = game.graph_for_entity(mf).connected_nodes(mf)
+            expect(agadir.tile.towns.none? { |t| nodes[t] }).to be(true)
+            expect(step.available_hex(mf, agadir)).to be_truthy
+          end
+
           it 'does not let a Company without a train upgrade a City' do
             lay(mf, 'D5', '115', [0])
             process('pass', mf) while game.round.current_entity == mf
