@@ -230,19 +230,6 @@ module Engine
           @connected_cities = connected_city_keys
         end
 
-        # Commodity locations get a diamond, destination ports a plaque with the bonus and the resource
-        # (like 18India); both are sticky and stay when tiles are laid [3.4.5]
-        def mark_commodities
-          CONCESSIONS.each do |id, data|
-            add_sticky_icon(data[:commodity], id.downcase)
-            data[:ports].each { |port| add_sticky_icon(port, "#{id.downcase}-#{data[:bonus]}") }
-          end
-        end
-
-        def add_sticky_icon(hex_id, image)
-          hex_by_id(hex_id).tile.icons << Part::Icon.new("18_africa/#{image}", nil, true, nil, true, large: true)
-        end
-
         # Commodity diamonds and port plaques are drawn without the round background of large icons,
         # so they cannot be mistaken for tokens
         def decorate_marker(icon)
@@ -254,18 +241,6 @@ module Engine
         # ----- Pre-printed yellow double Cities J21 and M32 [3.3.1]
 
         DOUBLE_CITY_HEXES = %w[J21 M32].freeze
-
-        # Neither City is tied to a Company: the hex is reserved, so no other Company may
-        # token there unless room is left for the Companies starting there
-        def reserve_double_city_hexes
-          DOUBLE_CITY_HEXES.each do |id|
-            tile = hex_by_id(id).tile
-            tile.cities.each do |city|
-              city.reservations.compact.each { |corporation| tile.reservations << corporation }
-              city.remove_all_reservations!
-            end
-          end
-        end
 
         # Once one City of a double City is taken and the other Company has yet to start, the free City is its
         # home: it is reserved there too, so the map shows the Company in that City on every tile. While
@@ -321,57 +296,6 @@ module Engine
           clear_graph
         end
 
-        # Shuffle the 17 charters and keep 9 of them (7 with two players) [1.3]
-        def remove_unused_corporations!
-          keep = CORPORATIONS_IN_GAME[@players.size]
-          removed = @corporations.sort_by { rand }.drop(keep)
-          removed.each do |corporation|
-            @corporations.delete(corporation)
-            corporation.close!
-            @removals << corporation
-          end
-          @log << "Companies removed from the game: #{removed.map(&:name).sort.join(', ')}"
-        end
-
-        # Starting spaces of removed Companies are not reserved [3.3.1]
-        def remove_home_reservations(corporations)
-          corporations.each do |corporation|
-            hex_by_id(corporation.coordinates).tile.cities.each do |city|
-              city.reservations.delete(corporation)
-            end
-          end
-        end
-
-        # Shares are only bought through cards at the printed price; the Share Price
-        # marker is placed on the Stock Track when the Company starts [2.3]
-        def setup_corporation_prices
-          @corporations.each do |corporation|
-            price = @stock_market.par_prices.find { |p| p.price == CORPORATION_PRICES[corporation.id] }
-            @stock_market.set_par(corporation, price)
-            corporation.share_price.corporations.delete(corporation)
-            corporation.ipoed = true
-            corporation.ipo_shares.each { |share| share.buyable = false }
-          end
-        end
-
-        def create_bonds
-          @bonds = Array.new(NUM_BONDS) do |index|
-            Company.new(
-              sym: "BOND#{index + 1}",
-              name: 'Government Bond',
-              value: BOND_PRICE,
-              desc: 'Pays out at the start of each Operating Round depending on the Economy. '\
-                    'Does not count against the Certificate Limit.',
-              type: :bond,
-            )
-          end
-          @bonds.each do |bond|
-            bond.owner = @bank
-            @bank.companies << bond
-          end
-          @companies.concat(@bonds)
-        end
-
         # Every share certificate is represented by a card with the same id as the share
         # Companies sharing a pre-printed double City start in their own City of the hex [6]
         HOME_CITY_NAMES = {
@@ -381,53 +305,6 @@ module Engine
         def home_description(corporation)
           name = HOME_CITY_NAMES[corporation.id] || LOCATION_NAMES[corporation.coordinates]
           "Home: #{name} (#{corporation.coordinates})"
-        end
-
-        def create_share_cards
-          @corporations.flat_map do |corporation|
-            corporation.ipo_shares.map do |share|
-              director = share.president
-              Company.new(
-                sym: share.id,
-                name: director ? "#{corporation.id} Director" : "#{corporation.id} Share",
-                value: CORPORATION_PRICES[corporation.id] * share.percent / 10,
-                desc: "#{share.percent}% of #{corporation.name}#{director ? " (Director's Certificate)" : ''}. "\
-                      "#{home_description(corporation)}",
-                type: director ? :director : :share,
-                color: corporation.color,
-                text_color: corporation.text_color,
-              )
-            end
-          end
-        end
-
-        def deal_cards
-          share_cards = create_share_cards
-          @companies.concat(share_cards)
-
-          deck = (share_cards + privates).sort_by { rand }
-          @players.each { |player| player.hand = [] }
-
-          # Simpson variant: every player starts with one Director's Certificate [10]
-          if @optional_rules.include?(:simpson)
-            directors = deck.select { |c| c.type == :director }.sort_by { rand }
-            @players.each do |player|
-              director = directors.shift
-              deck.delete(director)
-              player.hand << director
-            end
-            deck = deck.sort_by { rand }
-          end
-
-          @dealt_hands = {}
-          @players.each do |player|
-            player.hand.concat(deck.shift(CERTS_DEALT[@players.size] - player.hand.size))
-            @dealt_hands[player] = player.hand.dup
-            sort_hand!(player)
-          end
-          @bank_deck = deck
-          @bank_discard = []
-          @auction_cards = []
         end
 
         def privates
@@ -889,30 +766,6 @@ module Engine
           'COTTON' => 'Cotton',
           'GOLD' => 'Gold',
         }.freeze
-
-        def create_concessions
-          @concessions = CONCESSIONS.map do |id, data|
-            ports = data[:ports].map { |hex| LOCATION_NAMES[hex] }.join(' or ')
-            Company.new(
-              sym: "C_#{id}",
-              name: "#{CONCESSION_NAMES[id]} Concession",
-              value: 0,
-              desc: "Route including #{LOCATION_NAMES[data[:commodity]]} and #{ports}: "\
-                    "+#{format_currency(data[:bonus])} per train",
-              type: :concession,
-              # lets the Abilities bar offer "Assign to <Company>" [3.4.5]
-              abilities: [{ type: 'assign_corporation', owner_type: 'player' }],
-            )
-          end
-          @concession_right = Company.new(
-            sym: 'CONCESSION_CHOICE',
-            name: 'Choice of a Concession',
-            value: 0,
-            desc: 'The highest bidder chooses one of the remaining Concessions.',
-            type: :concession_right,
-          )
-          @companies.concat(@concessions + [@concession_right])
-        end
 
         def concession_data(concession)
           CONCESSIONS[concession.id.delete_prefix('C_')]
@@ -1426,6 +1279,155 @@ module Engine
             G18Africa::Step::CorporateSellShares,
             G18Africa::Step::CorporateBuyShares,
           ], round_num: round_num)
+        end
+
+        private
+
+        # Shuffle the 17 charters and keep 9 of them (7 with two players) [1.3]
+        def remove_unused_corporations!
+          keep = CORPORATIONS_IN_GAME[@players.size]
+          removed = @corporations.sort_by { rand }.drop(keep)
+          removed.each do |corporation|
+            @corporations.delete(corporation)
+            corporation.close!
+            @removals << corporation
+          end
+          @log << "Companies removed from the game: #{removed.map(&:name).sort.join(', ')}"
+        end
+
+        # Starting spaces of removed Companies are not reserved [3.3.1]
+        def remove_home_reservations(corporations)
+          corporations.each do |corporation|
+            hex_by_id(corporation.coordinates).tile.cities.each do |city|
+              city.reservations.delete(corporation)
+            end
+          end
+        end
+
+        # Commodity locations get a diamond, destination ports a plaque with the bonus and the resource
+        # (like 18India); both are sticky and stay when tiles are laid [3.4.5]
+        def mark_commodities
+          CONCESSIONS.each do |id, data|
+            add_sticky_icon(data[:commodity], id.downcase)
+            data[:ports].each { |port| add_sticky_icon(port, "#{id.downcase}-#{data[:bonus]}") }
+          end
+        end
+
+        def add_sticky_icon(hex_id, image)
+          hex_by_id(hex_id).tile.icons << Part::Icon.new("18_africa/#{image}", nil, true, nil, true, large: true)
+        end
+
+        # Neither City is tied to a Company: the hex is reserved, so no other Company may
+        # token there unless room is left for the Companies starting there
+        def reserve_double_city_hexes
+          DOUBLE_CITY_HEXES.each do |id|
+            tile = hex_by_id(id).tile
+            tile.cities.each do |city|
+              city.reservations.compact.each { |corporation| tile.reservations << corporation }
+              city.remove_all_reservations!
+            end
+          end
+        end
+
+        # Shares are only bought through cards at the printed price; the Share Price
+        # marker is placed on the Stock Track when the Company starts [2.3]
+        def setup_corporation_prices
+          @corporations.each do |corporation|
+            price = @stock_market.par_prices.find { |p| p.price == CORPORATION_PRICES[corporation.id] }
+            @stock_market.set_par(corporation, price)
+            corporation.share_price.corporations.delete(corporation)
+            corporation.ipoed = true
+            corporation.ipo_shares.each { |share| share.buyable = false }
+          end
+        end
+
+        def create_bonds
+          @bonds = Array.new(NUM_BONDS) do |index|
+            Company.new(
+              sym: "BOND#{index + 1}",
+              name: 'Government Bond',
+              value: BOND_PRICE,
+              desc: 'Pays out at the start of each Operating Round depending on the Economy. '\
+                    'Does not count against the Certificate Limit.',
+              type: :bond,
+            )
+          end
+          @bonds.each do |bond|
+            bond.owner = @bank
+            @bank.companies << bond
+          end
+          @companies.concat(@bonds)
+        end
+
+        def create_share_cards
+          @corporations.flat_map do |corporation|
+            corporation.ipo_shares.map do |share|
+              director = share.president
+              Company.new(
+                sym: share.id,
+                name: director ? "#{corporation.id} Director" : "#{corporation.id} Share",
+                value: CORPORATION_PRICES[corporation.id] * share.percent / 10,
+                desc: "#{share.percent}% of #{corporation.name}#{director ? " (Director's Certificate)" : ''}. "\
+                      "#{home_description(corporation)}",
+                type: director ? :director : :share,
+                color: corporation.color,
+                text_color: corporation.text_color,
+              )
+            end
+          end
+        end
+
+        def deal_cards
+          share_cards = create_share_cards
+          @companies.concat(share_cards)
+
+          deck = (share_cards + privates).sort_by { rand }
+          @players.each { |player| player.hand = [] }
+
+          # Simpson variant: every player starts with one Director's Certificate [10]
+          if @optional_rules.include?(:simpson)
+            directors = deck.select { |c| c.type == :director }.sort_by { rand }
+            @players.each do |player|
+              director = directors.shift
+              deck.delete(director)
+              player.hand << director
+            end
+            deck = deck.sort_by { rand }
+          end
+
+          @dealt_hands = {}
+          @players.each do |player|
+            player.hand.concat(deck.shift(CERTS_DEALT[@players.size] - player.hand.size))
+            @dealt_hands[player] = player.hand.dup
+            sort_hand!(player)
+          end
+          @bank_deck = deck
+          @bank_discard = []
+          @auction_cards = []
+        end
+
+        def create_concessions
+          @concessions = CONCESSIONS.map do |id, data|
+            ports = data[:ports].map { |hex| LOCATION_NAMES[hex] }.join(' or ')
+            Company.new(
+              sym: "C_#{id}",
+              name: "#{CONCESSION_NAMES[id]} Concession",
+              value: 0,
+              desc: "Route including #{LOCATION_NAMES[data[:commodity]]} and #{ports}: "\
+                    "+#{format_currency(data[:bonus])} per train",
+              type: :concession,
+              # lets the Abilities bar offer "Assign to <Company>" [3.4.5]
+              abilities: [{ type: 'assign_corporation', owner_type: 'player' }],
+            )
+          end
+          @concession_right = Company.new(
+            sym: 'CONCESSION_CHOICE',
+            name: 'Choice of a Concession',
+            value: 0,
+            desc: 'The highest bidder chooses one of the remaining Concessions.',
+            type: :concession_right,
+          )
+          @companies.concat(@concessions + [@concession_right])
         end
       end
     end
