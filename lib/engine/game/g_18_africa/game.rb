@@ -1204,11 +1204,6 @@ module Engine
 
         # ----- View helpers
 
-        # Variable Cities are marked hide: their "?+X" label replaces the printed revenue [3.4.4]
-        def hide_city_revenue?
-          true
-        end
-
         # Legend next to the map listing the Transcontinental Routes, like 18India's connection bonuses [3.4.6]
         def show_map_legend?
           true
